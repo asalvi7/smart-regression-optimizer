@@ -1,0 +1,1091 @@
+{
+  "admin-service": {
+    "Agency_Admin": [
+      "AA-Campaign_Config",
+      "AA-Client_Limit_Access",
+      "AA-Financials_Config",
+      "AA-Integration_Config",
+      "AA-Invoice_Config",
+      "AA-NewT&C"
+    ],
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-Data_Access_Group"
+    ]
+  },
+  "admin-service-broker": {
+    "Agency_Admin": [
+      "AA-Integration_Config"
+    ],
+    "Security": [
+      "SEC-Role_Authorization"
+    ]
+  },
+  "buyhistory": {
+    "Financials": [
+      "FIN-Actualization_Complete",
+      "FIN-Actualize_View"
+    ],
+    "TV-Mediaplan": [
+      "TVMP-Stewardship",
+      "TVMP-Makegoods_National"
+    ]
+  },
+  "campaign-history-service": {
+    "Campaign": [
+      "CM-Campaign_History",
+      "CM-Campaign_Dshbrd"
+    ]
+  },
+  "campaign-management": {
+    "Campaign": [
+      "CM-CampaignDetails_Basic",
+      "CM-CampaignDetails_CampaignDefaults",
+      "CM-CampaignDetails_FinancialSettings",
+      "CM-Campaign_Dshbrd",
+      "CM-CampaignHomePage-Alerts",
+      "CM-CampaignHomePage-Filter",
+      "CM-Campaign_Header_Notifications",
+      "CM-CopyCampaign",
+      "CM-CopyCampaign-with-Adtag",
+      "CM-Campaign_Search",
+      "CM-WorkflowEngine",
+      "CM-Subscriptions_Dshbrd",
+      "CM-Assignments_Dshbrd",
+      "CM-Impersonation",
+      "CM-Localization",
+      "CM-Homepage_Not_Loading",
+      "CM-API"
+    ],
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-Client_Access"
+    ]
+  },
+  "cm-buy-fee": {
+    "Digital-Mediaplan": [
+      "MP-Fee_Grid"
+    ],
+    "Financials": [
+      "FIN-Cost_Calculations"
+    ]
+  },
+  "cm-buy-tv": {
+    "TV-Mediaplan": [
+      "TVMP-Mediaplan",
+      "TVMP-CampaignDetails",
+      "TVMP-Negotiation",
+      "TVMP-Proposals",
+      "TVMP-Find_Inventory",
+      "TVMP-Scenario",
+      "TVMP-Revision_Scenarios",
+      "TVMP-Package",
+      "TVMP-Objectives",
+      "TVMP-Market_Pricing_Analysis",
+      "TVMP-RFP",
+      "TVMP-RFO",
+      "TVMP-TV_Orders_National",
+      "TVMP-Stewardship",
+      "TVMP-Makegoods_National",
+      "TVMP-Makegoods_Manual",
+      "TVMP-Makegoods_Research"
+    ],
+    "TV-Orders": [
+      "TVOR-eContract",
+      "TVOR-Local",
+      "TVOR-Makegoods_Local",
+      "TVOR-Multicurrency"
+    ]
+  },
+  "cm-campaign-ui": {
+    "Campaign": [
+      "CM-Campaign_Dshbrd",
+      "CM-CampaignDetails_Basic",
+      "CM-CampaignHomePage-Alerts",
+      "CM-CampaignHomePage-Filter"
+    ],
+    "Viewport": [
+      "VW-Banner",
+      "VW-Viewport"
+    ]
+  },
+  "cm-common-currency": {
+    "Digital-Mediaplan": [
+      "MP-Multicurrency"
+    ],
+    "Financials": [
+      "FIN-Localization"
+    ],
+    "Orders": [
+      "OR-Esupplier"
+    ]
+  },
+  "cm-common-forms-bulkedit": {
+    "Digital-Mediaplan": [
+      "MP-Bulk_Edit",
+      "MP-InlineEdit"
+    ]
+  },
+  "cm-common-forms-import": {
+    "Digital-Mediaplan": [
+      "MP-Import/ExportMediaplan"
+    ]
+  },
+  "cm-common-forms-lineitem": {
+    "Digital-Mediaplan": [
+      "MP-AddLine_Form",
+      "MP-PlacementDetails_Dates&Pricing",
+      "MP-PlacementDetails_Provider",
+      "MP-Placement_Flight",
+      "MP-Programmatic-Line_Details",
+      "MP-Targeting",
+      "MP-Rate_Card",
+      "MP-FDF",
+      "MP-Cost_Type"
+    ]
+  },
+  "cm-common-forms-move": {
+    "Digital-Mediaplan": [
+      "MP-MoveIn/MoveOut"
+    ]
+  },
+  "cm-common-hot-qs": {
+    "Digital-Mediaplan": [
+      "MP-Grid",
+      "MP-QuickSearch",
+      "MP-InlineEdit"
+    ]
+  },
+  "cm-common-knockout": {
+    "Campaign": [
+      "CM-CampaignDetails_Basic"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Grid"
+    ]
+  },
+  "cm-common-util": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ],
+    "Orders": [
+      "OR-API"
+    ]
+  },
+  "cm-flighting-panel": {
+    "Digital-Mediaplan": [
+      "MP-Placement_Flight",
+      "MP-DST",
+      "MP-Flighting"
+    ]
+  },
+  "cm-flighting-widget": {
+    "Digital-Mediaplan": [
+      "MP-Placement_Flight",
+      "MP-DST"
+    ]
+  },
+  "cm-forms-approvals": {
+    "Campaign": [
+      "CM-WorkflowEngine"
+    ],
+    "Orders": [
+      "OR-IO_Level_Approval"
+    ]
+  },
+  "cm-forms-providers": {
+    "Agency_Setup": [
+      "AS-Providers",
+      "AS-RateCard"
+    ],
+    "Digital-Mediaplan": [
+      "MP-PlacementDetails_Provider",
+      "MP-Supplier"
+    ]
+  },
+  "cm-monthly-distribution": {
+    "Digital-Mediaplan": [
+      "MP-Placement_Flight"
+    ],
+    "Financials": [
+      "FIN-Redistribution_AcrossPlacements"
+    ]
+  },
+  "cm-plan-to-buy": {
+    "Digital-Mediaplan": [
+      "MP-AddLine_Form",
+      "MP-Grid",
+      "MP-Bulk_Edit",
+      "MP-InlineEdit",
+      "MP-Buy_Tab_Not_Loading",
+      "MP-Proposal",
+      "MP-Lock",
+      "MP-Search_Order",
+      "MP-Subscription",
+      "MP-Redistribution",
+      "MP-Link_Payable_Billable",
+      "MP-Margin"
+    ],
+    "Financials": [
+      "FIN-Grid_View"
+    ],
+    "Orders": [
+      "OR-Orders_Dshbrd"
+    ]
+  },
+  "cm-prisma-online": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer",
+      "AD-Integrated_DSP"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Programmatic-Line_Details",
+      "MP-Programmatic_Discrepancy_Alert"
+    ],
+    "Orders": [
+      "NOR-Order_Definitions"
+    ]
+  },
+  "cm-prisma-print": {
+    "Digital-Mediaplan": [
+      "MP-AddLine_Form",
+      "MP-PlacementDetails_Dates&Pricing"
+    ],
+    "Invoices": [
+      "INV-Print_Matching"
+    ],
+    "Orders": [
+      "OR-Print_OOH"
+    ]
+  },
+  "cm-radia-actualize": {
+    "Financials": [
+      "FIN-Actualization_Complete",
+      "FIN-Actualization_Bulk_Actualize",
+      "FIN-Actualize_View"
+    ],
+    "TV-Mediaplan": [
+      "TVMP-Global_Finance",
+      "TVMP-Global_Ignitia"
+    ]
+  },
+  "cm-workflow-integration": {
+    "Campaign": [
+      "CM-WorkflowEngine"
+    ],
+    "Orders": [
+      "NOR-Order_Status",
+      "OR-Order_Status"
+    ]
+  },
+  "creative-grid": {
+    "Creative": [
+      "CR-Creative_Trafficking",
+      "CR-AdTags_Integrated/External",
+      "CR-Trackers"
+    ]
+  },
+  "event-translator-service": {
+    "Campaign": [
+      "CM-Campaign_History"
+    ],
+    "Financials": [
+      "FIN-Sync_with_BuySystems"
+    ],
+    "Invoices": [
+      "INV-Sync_with_BuySystems"
+    ]
+  },
+  "global-prisma-financial": {
+    "1P": [
+      "1P-Reconciliation_Financials_Ignitia",
+      "1P-Reconciliation_Invoices_Ignitia"
+    ],
+    "Financials": [
+      "FIN-Actualization_Complete",
+      "FIN-Reconciliation_Ignitia",
+      "FIN-Reconciliation_DS-NA-Mainframe",
+      "FIN-Reconciliation_MBS",
+      "FIN-Reconciliation_OX"
+    ],
+    "Global Invoices": [
+      "GBLINV-Add/Edit",
+      "GBLINV-Invoice_Matching",
+      "GBLINV-EDI_Invoices"
+    ]
+  },
+  "idesk-agency": {
+    "Agency_Admin": [
+      "AA-Campaign_Config"
+    ],
+    "Agency_Setup": [
+      "AS-Agency_Setup"
+    ],
+    "MDM": [
+      "MDM-Agency_Onboarding"
+    ],
+    "Security": [
+      "SEC-LDAP"
+    ]
+  },
+  "idesk-ddl": {
+    "Agency_Setup": [
+      "AS-Agency_Setup"
+    ],
+    "MDM": [
+      "MDM-Agency_Onboarding",
+      "MDM-Dynamic_Entities"
+    ]
+  },
+  "idesk-delivery": {
+    "Delivery Data": [
+      "AD-Delivery_Discrepancy_MO",
+      "AD-Attribution_Delivery"
+    ]
+  },
+  "local-xml-export": {
+    "1P": [
+      "1P-Local_Reports"
+    ],
+    "Reporting": [
+      "REP-Universal_ETL",
+      "REP-Report_Writer"
+    ]
+  },
+  "mediaplan": {
+    "Digital-Mediaplan": [
+      "MP-Grid",
+      "MP-AddLine_Form",
+      "MP-Bulk_Edit",
+      "MP-Buy_Tab_Not_Loading",
+      "MP-Proposal",
+      "MP-Lock",
+      "MP-Booking_Category",
+      "MP-Import/ExportMediaplan",
+      "MP-Redistribution",
+      "MP-Actualization",
+      "MP-Cost_Refresh",
+      "MP-Cascade_Discount",
+      "MP-Subscription",
+      "MP-QuickSearch",
+      "MP-Exclude/Include/Delete",
+      "MP-DuplicatePlacement",
+      "MP-Search_Order"
+    ],
+    "Financials": [
+      "FIN-Grid_View",
+      "FIN-Export"
+    ],
+    "Orders": [
+      "OR-Orders_Dshbrd",
+      "OR-Send"
+    ]
+  },
+  "mediaplan-analytics": {
+    "Business Intelligence": [
+      "BI-PerformanceManagement",
+      "BI-ProPost"
+    ],
+    "Reporting": [
+      "REP-Dataset_Reports",
+      "REP-Report_Writer"
+    ]
+  },
+  "mediaplan-data-core": {
+    "Data API": [
+      "DA-Plan_vs_Actual_API",
+      "DA-Prisma_API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API",
+      "MP-Actualization"
+    ],
+    "Reporting": [
+      "REP-Dataset_Reports"
+    ]
+  },
+  "national-mediaplan-service": {
+    "1P": [
+      "1P-National_Reports",
+      "1P-Send_To_Spectra-National",
+      "1P-Sync_From_Spectra-National"
+    ],
+    "TV-Mediaplan": [
+      "TVMP-Mediaplan",
+      "TVMP-CampaignDetails",
+      "TVMP-National_Research_Spectra",
+      "TVMP-National_Tecc_Orders",
+      "TVMP-TV_Orders_National",
+      "TVMP-Negotiation",
+      "TVMP-Stewardship",
+      "TVMP-Omni_Canada"
+    ]
+  },
+  "pcm-common": {
+    "Campaign": [
+      "CM-CampaignDetails_Basic",
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "pcm-common-adapter": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "pcm-common-authorization": {
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-Multi_Data_Role_Authorizations",
+      "SEC-Client_Access"
+    ]
+  },
+  "pcm-common-core": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "pcm-common-definition": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Metadata": [
+      "MDM-MCPE"
+    ]
+  },
+  "pcm-common-i18n": {
+    "Campaign": [
+      "CM-Localization"
+    ],
+    "Financials": [
+      "FIN-Localization"
+    ]
+  },
+  "pcm-common-persistence": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "pcm-common-security": {
+    "Federated_Auth": [
+      "MA-Security_Authentication"
+    ],
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-LDAP",
+      "SEC-MO_Security_Platform"
+    ]
+  },
+  "pcm-common-util": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "pricing-engine": {
+    "Agency_Setup": [
+      "AS-RateCard"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Rate_Card"
+    ],
+    "TV-Mediaplan": [
+      "TVMP-Market_Pricing_Analysis"
+    ]
+  },
+  "prisma-agency-service": {
+    "Agency_Setup": [
+      "AS-Agency_Setup",
+      "AS-Integration_Config",
+      "AS-Financials_Config",
+      "AS-Invoice_Config",
+      "AS-T&C",
+      "AS-Location",
+      "AS-Providers",
+      "AS-RateCard"
+    ],
+    "MDM": [
+      "MDM-Agency_Onboarding",
+      "MDM-Dynamic_Entities"
+    ],
+    "Security": [
+      "SEC-LDAP"
+    ]
+  },
+  "prisma-alert-service": {
+    "Adserving": [
+      "AD-Spend_Threshold_Alert"
+    ],
+    "Campaign": [
+      "CM-CampaignHomePage-Alerts"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Programmatic_Discrepancy_Alert"
+    ],
+    "Invoices": [
+      "INV-Incomplete_Invoice"
+    ]
+  },
+  "prisma-bridge": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer",
+      "AD-Integrated_DSP",
+      "AD-External_DSP",
+      "AD-New_Grid",
+      "AD-API"
+    ],
+    "Agency_Setup": [
+      "AS-AdServer_AccountMapping",
+      "AS-AdServer_InstanceSetup"
+    ]
+  },
+  "prisma-campaign-details": {
+    "Campaign": [
+      "CM-CampaignDetails_Basic",
+      "CM-CampaignDetails_CampaignDefaults",
+      "CM-CampaignDetails_FinancialSettings",
+      "CM-Campaign_Dshbrd",
+      "CM-CampaignHomePage-Alerts",
+      "CM-CampaignHomePage-Filter",
+      "CM-API"
+    ]
+  },
+  "prisma-campaign-header": {
+    "Campaign": [
+      "CM-Campaign_Header_Notifications",
+      "CM-CampaignDetails_Basic",
+      "CM-Campaign_Search"
+    ]
+  },
+  "prisma-campaign-search-service": {
+    "Campaign": [
+      "CM-Campaign_Search",
+      "CM-Assignments_Dshbrd",
+      "CM-Campaign_Dshbrd"
+    ]
+  },
+  "prisma-campaign-service": {
+    "Campaign": [
+      "CM-CampaignDetails_Basic",
+      "CM-CampaignDetails_CampaignDefaults",
+      "CM-CampaignDetails_FinancialSettings",
+      "CM-CopyCampaign",
+      "CM-WorkflowEngine",
+      "CM-API",
+      "CM-Localization",
+      "CM-Subscriptions_Dshbrd"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ],
+    "Security": [
+      "SEC-Role_Authorization"
+    ]
+  },
+  "prisma-cm-commons": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ],
+    "Financials": [
+      "FIN-Cost_Calculations"
+    ],
+    "Orders": [
+      "OR-API"
+    ]
+  },
+  "prisma-cm-data": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ]
+  },
+  "prisma-cm-query": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ],
+    "Reporting": [
+      "REP-Dataset_Reports"
+    ]
+  },
+  "prisma-cm-security-infrastructure": {
+    "Federated_Auth": [
+      "MA-Security_Authentication"
+    ],
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-MO_Security_Platform",
+      "SEC-Multi_Data_Role_Authorizations"
+    ]
+  },
+  "prisma-cmservices-dto": {
+    "Campaign": [
+      "CM-API"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Placement_API"
+    ],
+    "Financials": [
+      "FIN-Cost_Calculations"
+    ],
+    "Orders": [
+      "OR-API"
+    ]
+  },
+  "prisma-creative": {
+    "Creative": [
+      "CR-Creative_Trafficking",
+      "CR-AdTags_Integrated/External",
+      "CR-Trackers"
+    ]
+  },
+  "prisma-creative-service": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer"
+    ],
+    "Creative": [
+      "CR-Creative_Trafficking",
+      "CR-AdTags_Integrated/External",
+      "CR-Trackers"
+    ]
+  },
+  "prisma-dashboard-service": {
+    "Business Intelligence": [
+      "BI-PerformanceManagement"
+    ],
+    "Campaign": [
+      "CM-Campaign_Dshbrd",
+      "CM-Assignments_Dshbrd",
+      "CM-Subscriptions_Dshbrd"
+    ],
+    "Performance_Management": [
+      "PM-Analyze",
+      "PM-Non_Analyze"
+    ]
+  },
+  "prisma-delivery": {
+    "Delivery Data": [
+      "AD-Attribution_Delivery",
+      "AD-Delivery_Discrepancy_MO",
+      "AD-Analyze_Old_UI",
+      "AD-New_Grid",
+      "AD-Search_Delivery",
+      "AD-Verification_Partner",
+      "AD-Spend_Threshold_Alert"
+    ]
+  },
+  "prisma-external-service": {
+    "Bulk API": [
+      "BA-Campaign_Extract",
+      "BA-Buys_Extract",
+      "BA-Placement_Extract",
+      "BA-Order_Extract",
+      "BA-Delivery_Extract"
+    ],
+    "Data API": [
+      "DA-Global_API",
+      "DA-Prisma_API"
+    ],
+    "Security": [
+      "SEC-External_API",
+      "SEC-API"
+    ]
+  },
+  "prisma-financial-service": {
+    "Financials": [
+      "FIN-Actualization_Complete",
+      "FIN-Actualization_Bulk_Actualize",
+      "FIN-Actualization_Edit_Actuals",
+      "FIN-Actualize_View",
+      "FIN-Actuals_Units&Cost",
+      "FIN-Auto_Update",
+      "FIN-Manual_Update",
+      "FIN-Lock",
+      "FIN-Ok_to_Pay",
+      "FIN-Needs_ReSend",
+      "FIN-Reconciliation_Ignitia",
+      "FIN-Reconciliation_DS-NA-Mainframe",
+      "FIN-Reconciliation_OX",
+      "FIN-Reconciliation_MBS",
+      "FIN-Sync_with_BuyTab",
+      "FIN-Sync_with_BuySystems",
+      "FIN-Cost_Calculations",
+      "FIN-Grid_View",
+      "FIN-Export",
+      "FIN-Statuses_Not_in_Sync",
+      "FIN-Stuck_in_Pending"
+    ],
+    "Invoices": [
+      "INV-Sync_with_BuySystems",
+      "INV-Sync_with_BuyTab"
+    ]
+  },
+  "prisma-home": {
+    "Campaign": [
+      "CM-Campaign_Dshbrd",
+      "CM-CampaignHomePage-Alerts",
+      "CM-CampaignHomePage-Filter"
+    ],
+    "Viewport": [
+      "VW-NewRelease_Features",
+      "VW-Banner",
+      "VW-Viewport"
+    ]
+  },
+  "prisma-integration": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer",
+      "AD-Integrated_DSP",
+      "AD-External_DSP"
+    ],
+    "Agency_Admin": [
+      "AA-Integration_Config"
+    ],
+    "Agency_Setup": [
+      "AS-Integration_Config"
+    ]
+  },
+  "prisma-integration-service": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer",
+      "AD-Integrated_DSP",
+      "AD-External_DSP",
+      "AD-Supplier_API"
+    ],
+    "Agency_Setup": [
+      "AS-Integration_Config"
+    ]
+  },
+  "prisma-invoice": {
+    "1P": [
+      "1P-Digital_Invoices",
+      "1P-TV_Invoices_Local"
+    ],
+    "Financials": [
+      "FIN-Reconciliation_Ignitia",
+      "FIN-Reconciliation_OX"
+    ],
+    "Invoices": [
+      "INV-Add/Edit_Invoice",
+      "INV-Add/Edit_Seller_Invoice",
+      "INV-Auto_Reconciliation",
+      "INV-Manual_Reconciliation",
+      "INV-AutoPay",
+      "INV-Dashboard",
+      "INV-History_View",
+      "INV-Reconciliation_View",
+      "INV-Reconciliation_Ignitia",
+      "INV-Reconciliation_DS-NA-Mainframe",
+      "INV-Reconciliation_OX",
+      "INV-Reconciliation_Lock",
+      "INV-Reallocation",
+      "INV-Reject",
+      "INV-Reverse",
+      "INV-LineItem_Rematch",
+      "INV-Needs_Review_Invoice",
+      "INV-Incomplete_Invoice",
+      "INV-StuckInPending",
+      "INV-AUA",
+      "INV-Cost_Adjusted_Buys"
+    ]
+  },
+  "prisma-invoice-hub": {
+    "Global Invoices": [
+      "GBLINV-Invoice_Matching"
+    ],
+    "Invoices": [
+      "INV-Dashboard",
+      "INV-Integrated_invoice",
+      "INV-Orders_View",
+      "INV-AUA"
+    ]
+  },
+  "prisma-invoice-service": {
+    "Financials": [
+      "FIN-Stuck_in_Pending"
+    ],
+    "Invoices": [
+      "INV-Add/Edit_Invoice",
+      "INV-Add_Invoice_API",
+      "INV-Add_Invoice_XML",
+      "INV-Auto_Reconciliation",
+      "INV-Manual_Reconciliation",
+      "INV-AutoPay",
+      "INV-Reconciliation_View",
+      "INV-Reject",
+      "INV-Reverse",
+      "INV-Tax",
+      "INV-MX",
+      "INV-SCM",
+      "INV-Zero$_Invoices",
+      "INV-StuckInPending"
+    ]
+  },
+  "prisma-invoice-textract": {
+    "Invoices": [
+      "INV-Add/Edit_Invoice",
+      "INV-Integrated_invoice",
+      "INV-Document"
+    ]
+  },
+  "prisma-local-research": {
+    "1P": [
+      "1P-Local_Reports",
+      "1P-Network_Radio"
+    ],
+    "TV-Mediaplan": [
+      "TVMP-Inventory_Research",
+      "TVMP-Inventory_Research_Radio",
+      "TVMP-Local_Research_Spectra",
+      "TVMP-Radio_Ranker",
+      "TVMP-Radio_Research_Spectra"
+    ]
+  },
+  "prisma-mq-adapter-service": {
+    "Campaign": [
+      "CM-Campaign_History"
+    ],
+    "Financials": [
+      "FIN-Sync_with_BuySystems"
+    ],
+    "Invoices": [
+      "INV-Sync_with_BuySystems"
+    ]
+  },
+  "prisma-order-management-service": {
+    "New Order Service": [
+      "NOR-Order_Definitions",
+      "NOR-Order_Status"
+    ],
+    "Orders": [
+      "NOR-Order_Definitions",
+      "NOR-Order_Status",
+      "NOR-Order_Revision",
+      "NOR-Order_Auto_Send",
+      "NOR-Order_eSuppliers_Send",
+      "NOR-Order_GAP_send_Accept_Reject",
+      "NOR-AgencyAccept",
+      "NOR-Orders_Dashboard",
+      "NOR-T&C",
+      "NOR-Multicurrency",
+      "NOR-PDF",
+      "NOR-Radia",
+      "NOR-Order_BudgetValidation",
+      "NOR-Order_Defaults",
+      "NOR-CreditOrder",
+      "NOR-Alerts",
+      "OR-API"
+    ]
+  },
+  "prisma-order-service": {
+    "New Order Service": [
+      "NOR-Order_Status",
+      "NOR-Order_Revision"
+    ],
+    "Orders": [
+      "OR-Order_Status",
+      "OR-Order_Revision",
+      "OR-API"
+    ]
+  },
+  "prisma-orders": {
+    "Orders": [
+      "OR-Orders_Dshbrd",
+      "OR-Order_Status",
+      "OR-Order_Revision",
+      "OR-Send",
+      "OR-PDF",
+      "OR-T&C",
+      "OR-AgencyAccept",
+      "OR-CreditOrders",
+      "OR-Esupplier",
+      "OR-VendorOverride",
+      "OR-Validation",
+      "OR-Platform_Tax",
+      "OR-Print_OOH",
+      "OR-Radia"
+    ]
+  },
+  "prisma-provider": {
+    "Agency_Setup": [
+      "AS-Providers",
+      "AS-FDF"
+    ],
+    "Bulk API": [
+      "BA-Seller_Extract"
+    ],
+    "MDM": [
+      "MDM-PreferredSellers",
+      "MDM-XMedia"
+    ],
+    "Security": [
+      "SEC-Sellers"
+    ]
+  },
+  "prisma-ratecard-admin": {
+    "Agency_Setup": [
+      "AS-RateCard"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Rate_Card"
+    ],
+    "MDM": [
+      "MDM-Cost_Refresh"
+    ]
+  },
+  "prisma-ratecard-service": {
+    "Agency_Setup": [
+      "AS-RateCard"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Rate_Card"
+    ],
+    "MDM": [
+      "MDM-Cost_Refresh"
+    ]
+  },
+  "prisma-research-parent": {
+    "TV-Mediaplan": [
+      "TVMP-Inventory_Research",
+      "TVMP-National_Research_Spectra",
+      "TVMP-Local_Research_Spectra",
+      "TVMP-Radio_Research_Spectra",
+      "TVMP-TV_Insights"
+    ]
+  },
+  "prisma-security-authorization": {
+    "Federated_Auth": [
+      "MA-Security_Authentication"
+    ],
+    "Security": [
+      "SEC-Role_Authorization",
+      "SEC-Multi_Data_Role_Authorizations",
+      "SEC-Client_Access",
+      "SEC-Data_Access_Group",
+      "SEC-MO_Security_Platform",
+      "SEC-MO_One_Platform",
+      "SEC-Multi_SSO",
+      "SEC-LDAP"
+    ]
+  },
+  "prisma-subscription-service": {
+    "Campaign": [
+      "CM-Subscriptions_Dshbrd"
+    ],
+    "Digital-Mediaplan": [
+      "MP-Subscription"
+    ]
+  },
+  "prisma-targeting-service": {
+    "Digital-Mediaplan": [
+      "MP-Targeting",
+      "MP-Programmatic-Line_Details"
+    ]
+  },
+  "prisma-traffic": {
+    "Adserving": [
+      "AD-Integrated_AdServer",
+      "AD-External_AdServer"
+    ],
+    "Creative": [
+      "TR-Auto_Traffic",
+      "TR-Batch_Trafficking",
+      "TR-Copy_Campaign",
+      "TR-External_Adserver",
+      "TR-Integrated_AdServer",
+      "TR-External_DSP",
+      "TR-Integrated_DSP_Creative_Placements",
+      "TR-NGT_Campaign/Budget_Linking",
+      "TR-NGT_Creative_Trafficking",
+      "TR-NGT_Dashboard",
+      "TR-Traffic_Tab_Not_Loading",
+      "TR-Trafficking_Sheet",
+      "TR-Social_FB",
+      "TR-Move_In/Move_Out"
+    ]
+  },
+  "prisma-tv-invoice": {
+    "1P": [
+      "1P-TV_Invoices_Local",
+      "1P-TV_Invoices_National",
+      "1P-Broadcast_Traffic"
+    ],
+    "Financials": [
+      "FIN-Spectra_Invoices",
+      "FIN-Reconciliation_Spectra-MD",
+      "FIN-Send_To_Spectra-Local",
+      "FIN-Send_To_Spectra-National"
+    ],
+    "Invoices": [
+      "INV-1P_Invoices",
+      "INV-Add/Edit_Invoice",
+      "INV-Auto_Reconciliation",
+      "INV-Manual_Reconciliation",
+      "INV-Reconciliation_Spectra-MD",
+      "INV-Reconciliation_MBS",
+      "INV-Reconciliation_Lock"
+    ]
+  },
+  "search": {
+    "Campaign": [
+      "CM-Campaign_Search"
+    ],
+    "Digital-Mediaplan": [
+      "MP-QuickSearch"
+    ],
+    "Invoices": [
+      "INV-Needs_Review_Invoice"
+    ],
+    "Orders": [
+      "OR-Search"
+    ]
+  },
+  "tnc-service": {
+    "Agency_Setup": [
+      "AS-T&C"
+    ],
+    "Orders": [
+      "NOR-T&C",
+      "OR-T&C"
+    ]
+  },
+  "xml-file-import": {
+    "Digital-Mediaplan": [
+      "MP-Import/ExportMediaplan"
+    ],
+    "Invoices": [
+      "INV-Add_Invoice_XML"
+    ],
+    "Orders": [
+      "OR-API"
+    ]
+  }
+}

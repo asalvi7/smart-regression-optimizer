@@ -1,149 +1,101 @@
-import asyncio
-import logging
-from datetime import datetime
-from typing import List, Optional
-
 import httpx
+import re
+from datetime import datetime, timezone, timedelta
+from app.core.config import get_settings
+from app.models.schemas import Commit
 
-from app.config import settings
-from app.models.stash_models import RepoActivity
-from app.utils.date_utils import format_date, to_epoch_ms
+settings = get_settings()
 
-logger = logging.getLogger(__name__)
+_BASE = settings.stash_base_url.rstrip("/")
 
-STASH_API_BASE = f"{settings.stash_base_url}/rest/api/1.0"
-AUTH_HEADERS = {"Authorization": f"Bearer {settings.stash_token}"}
+TICKET_PATTERN = re.compile(r'\b(?:ADINFRA|IAPP)-\d+\b', re.IGNORECASE)
+
+STASH_HEADERS = {
+    "Authorization": f"Bearer {settings.stash_token}",
+    "Content-Type": "application/json",
+}
 
 
-async def fetch_all_repos(client: httpx.AsyncClient) -> List[dict]:
-    """Fetches all repos under the configured Stash project, handling pagination."""
+async def get_all_repos() -> list[dict]:
     repos = []
     start = 0
-    limit = settings.stash_page_limit
+    limit = 100
 
-    while True:
-        url = (
-            f"{STASH_API_BASE}/projects/{settings.stash_project_key}/repos"
-            f"?limit={limit}&start={start}"
-        )
-        response = await client.get(url, headers=AUTH_HEADERS)
-        response.raise_for_status()
-        data = response.json()
-
-        repos.extend(data.get("values", []))
-
-        if data.get("isLastPage", True):
-            break
-        start = data.get("nextPageStart", start + limit)
+    async with httpx.AsyncClient(timeout=60) as client:
+        while True:
+            url = (
+                f"{_BASE}/rest/api/1.0/projects"
+                f"/{settings.stash_project_key}/repos"
+                f"?limit={limit}&start={start}"
+            )
+            resp = await client.get(url, headers=STASH_HEADERS)
+            resp.raise_for_status()
+            data = resp.json()
+            repos.extend(data.get("values", []))
+            if data.get("isLastPage", True):
+                break
+            start += limit
 
     return repos
 
 
-async def fetch_commits_in_range(
-    client: httpx.AsyncClient,
-    repo_slug: str,
-    since_epoch_ms: int,
-    until_epoch_ms: int,
-) -> List[dict]:
-    """
-    Fetches commits for a single repo within [since, until].
-    Handles pagination. Returns all matching commit objects.
-    """
+async def get_commits_since(repo_slug: str, since: datetime) -> list[Commit]:
     commits = []
     start = 0
-    limit = settings.stash_page_limit
+    limit = 100
+    since_ts = int(since.timestamp() * 1000)
 
-    while True:
-        url = (
-            f"{STASH_API_BASE}/projects/{settings.stash_project_key}"
-            f"/repos/{repo_slug}/commits"
-            f"?limit={limit}&start={start}"
-            f"&since={since_epoch_ms}&until={until_epoch_ms}"
-        )
-        try:
-            response = await client.get(url, headers=AUTH_HEADERS)
-            response.raise_for_status()
-            data = response.json()
-        except httpx.HTTPStatusError as exc:
-            logger.warning(
-                "Failed to fetch commits for repo '%s': %s", repo_slug, exc.response.status_code
+    async with httpx.AsyncClient(timeout=60) as client:
+        while True:
+            url = (
+                f"{_BASE}/rest/api/1.0/projects"
+                f"/{settings.stash_project_key}/repos/{repo_slug}"
+                f"/commits?limit={limit}&start={start}&until=refs/heads/master"
             )
-            return []
-        except httpx.RequestError as exc:
-            logger.warning("Request error for repo '%s': %s", repo_slug, exc)
-            return []
+            resp = await client.get(url, headers=STASH_HEADERS)
+            if resp.status_code in (404, 500):
+                return []
+            resp.raise_for_status()
+            data = resp.json()
 
-        commits.extend(data.get("values", []))
+            for c in data.get("values", []):
+                commit_ts = c.get("authorTimestamp", 0)
+                if commit_ts < since_ts:
+                    return commits
+                message = c.get("message", "")
+                if message.startswith("[jenkins-release]"):
+                    continue
+                tickets = TICKET_PATTERN.findall(message)
+                commits.append(Commit(
+                    id=c["id"],
+                    message=message,
+                    author=c.get("author", {}).get("displayName", "unknown"),
+                    timestamp=datetime.fromtimestamp(commit_ts / 1000, tz=timezone.utc),
+                    repo=repo_slug,
+                    jira_tickets=list(set(t.upper() for t in tickets)),
+                ))
 
-        if data.get("isLastPage", True):
-            break
-        start = data.get("nextPageStart", start + limit)
+            if data.get("isLastPage", True):
+                break
+            start += limit
 
     return commits
 
 
-def _build_repo_url(repo_slug: str) -> str:
-    return (
-        f"{settings.stash_base_url}/projects/{settings.stash_project_key}"
-        f"/repos/{repo_slug}/browse"
-    )
+async def get_repos_with_recent_commits(since_days: int = 30) -> dict[str, list[Commit]]:
+    since = datetime.now(tz=timezone.utc) - timedelta(days=since_days)
+    repos = await get_all_repos()
 
+    result = {}
+    import asyncio
+    semaphore = asyncio.Semaphore(10)  # max 10 concurrent requests to Stash
 
-def _extract_commit_date(commit: dict) -> Optional[str]:
-    ts = commit.get("authorTimestamp") or commit.get("committerTimestamp")
-    if ts:
-        return format_date(datetime.utcfromtimestamp(ts / 1000))
-    return None
+    async def fetch_one(repo):
+        async with semaphore:
+            slug = repo["slug"]
+            commits = await get_commits_since(slug, since)
+            if commits:
+                result[slug] = commits
 
-
-async def get_active_repos(from_dt: datetime, to_dt: datetime) -> tuple[List[RepoActivity], int]:
-    """
-    Scans all repos in the CM project and returns those with commits
-    in the given date range, sorted by last_commit_date descending.
-    """
-    since_ms = to_epoch_ms(from_dt)
-    until_ms = to_epoch_ms(to_dt)
-
-    timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        repos = await fetch_all_repos(client)
-
-        async def process_repo(repo: dict) -> Optional[RepoActivity]:
-            slug = repo.get("slug", "")
-            name = repo.get("name", slug)
-
-            commits = await fetch_commits_in_range(client, slug, since_ms, until_ms)
-            if not commits:
-                return None
-
-            authors = sorted(
-                {
-                    c.get("author", {}).get("slug")
-                    or c.get("author", {}).get("name", "unknown")
-                    for c in commits
-                }
-            )
-            dates = [_extract_commit_date(c) for c in commits if _extract_commit_date(c)]
-            last_commit_date = max(dates) if dates else "unknown"
-
-            return RepoActivity(
-                name=name,
-                slug=slug,
-                commit_count=len(commits),
-                last_commit_date=last_commit_date,
-                authors=authors,
-                repo_url=_build_repo_url(slug),
-            )
-
-        # Run all repo queries concurrently, capped to avoid overwhelming the API
-        semaphore = asyncio.Semaphore(10)
-
-        async def throttled_process(repo: dict) -> Optional[RepoActivity]:
-            async with semaphore:
-                return await process_repo(repo)
-
-        results = await asyncio.gather(*[throttled_process(r) for r in repos])
-
-    active = [r for r in results if r is not None]
-    active.sort(key=lambda r: r.last_commit_date, reverse=True)
-    return active, len(repos)
+    await asyncio.gather(*[fetch_one(r) for r in repos])
+    return result
