@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Before Starting Any Work
+
+**Always read the documentation folder first.** Before answering questions, planning, or writing code, check the relevant docs:
+
+| What you need | Where to look |
+|---|---|
+| Where the project is headed and what step we're on | `documentation/roadmap/project-roadmap.md` |
+| Why the project exists and what was built in Parts 1 & 2 | `documentation/sessions/parts-1-and-2-build.md` |
+| Stakeholder feedback and what was approved/rejected | `documentation/decisions/objective-1-stakeholder-alignment.md` |
+| What happened in the last session and what was decided | `documentation/sessions/session-01-orientation-and-planning.md` |
+
+The roadmap is the single source of truth for current status, next steps, open questions, and working principles. **Read it before proposing anything.**
+
 ## Project Overview
 
 Smart Regression Optimizer is a POC for Mediaocean that intelligently selects regression test cases when code changes are detected. It polls Bitbucket Server (Stash) for new commits, extracts Jira ticket IDs from commit messages, and recommends relevant Selenium test cases via Jira queries.
