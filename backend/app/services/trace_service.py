@@ -24,7 +24,7 @@ async def build_pipeline_trace(since_days: int) -> PipelineTraceResponse:
         for commit in commits:
             message = commit.message[:120].split("\n")[0]
             trace = CommitTrace(
-                commit_id=commit.id[:8],
+                commit_id=commit.id,
                 repo=repo_slug,
                 message=message,
                 author=commit.author,

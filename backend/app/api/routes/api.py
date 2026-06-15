@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 from datetime import datetime, timezone, timedelta
 import asyncio
 
-from app.services.stash_service import get_repos_with_recent_commits, get_all_repos
+from app.services.stash_service import get_repos_with_recent_commits, get_all_repos, get_commit_files, get_commit_diff
 from app.services.selector import select_tests_for_commits
 from app.services.ranker import rank_tests
 from app.services.trace_service import build_pipeline_trace
@@ -85,6 +85,25 @@ async def debug_ticket(ticket_id: str):
 @router.get("/trace", response_model=PipelineTraceResponse)
 async def get_pipeline_trace(since_days: int = Query(default=7, ge=1, le=90)):
     return await build_pipeline_trace(since_days=since_days)
+
+
+@router.get("/commits/{repo}/{commit_id}/files")
+async def get_files_for_commit(repo: str, commit_id: str):
+    """Return the list of files changed in a specific commit."""
+    if len(commit_id) < 20:
+        return {
+            "error": "short_sha",
+            "detail": f"commit_id '{commit_id}' is a short SHA — restart backend and re-run pipeline",
+            "files": [],
+        }
+    files, debug = await get_commit_files(repo, commit_id)
+    return {"files": files, "repo": repo, "commit_id": commit_id, "debug": debug}
+
+
+@router.get("/commits/{repo}/{commit_id}/diff")
+async def get_diff_for_file(repo: str, commit_id: str, path: str = Query(...)):
+    """Return the parsed diff for one file in a commit."""
+    return await get_commit_diff(repo, commit_id, path)
 
 
 @router.get("/events")
