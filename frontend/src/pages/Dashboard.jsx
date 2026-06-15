@@ -1,17 +1,27 @@
-import { useState, useMemo } from 'react'
-import { fetchTrace } from '../utils/api'
+import { useState, useMemo, useCallback } from 'react'
+import { fetchTrace, fetchCommitFiles, fetchCommitDiff } from '../utils/api'
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
 
 const STATUS_BADGE = {
   matched:       { cls: 'badge-matched',    icon: '✓', label: 'Matched' },
   no_ticket:     { cls: 'badge-no-ticket',  icon: '—', label: 'No ticket' },
   no_component:  { cls: 'badge-no-mapping', icon: '⚠', label: 'No component' },
-  no_permission: { cls: 'badge-no-tag',     icon: '🔒', label: 'Jira API: no permission' },
+  no_permission: { cls: 'badge-no-tag',     icon: '🔒', label: 'No permission' },
 }
 
 function StatusBadge({ status }) {
   const b = STATUS_BADGE[status] ?? { cls: 'badge-no-ticket', icon: '?', label: status }
   return <span className={`badge ${b.cls}`}>{b.icon} {b.label}</span>
 }
+
+function formatDate(ts) {
+  return new Date(ts).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })
+}
+
+// ─── By Repo view ────────────────────────────────────────────────────────────
 
 function Step({ num, label, value, status }) {
   const cls = status === 'ok' ? 'step-ok' : status === 'warn' ? 'step-warn' : 'step-skip'
@@ -24,17 +34,11 @@ function Step({ num, label, value, status }) {
   )
 }
 
-function CommitCard({ trace }) {
-  const date = new Date(trace.timestamp).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
-
-  // Build step 2: tickets
+function CommitCard({ trace, expanded, onToggle }) {
   const ticketList = trace.tickets.length > 0
     ? trace.tickets.map(t => <span key={t} className="ticket-tag">{t}</span>)
     : <span className="muted">No ticket ID in commit message</span>
 
-  // Step 3: tag + component from Jira ticket
   const step3Display = trace.tickets.length === 0
     ? <span className="muted">N/A — no ticket</span>
     : Object.entries(trace.ticket_tags).map(([ticket, tag]) => {
@@ -64,7 +68,6 @@ function CommitCard({ trace }) {
         )
       })
 
-  // Step 4: test search JQL
   const allComponents = Object.values(trace.ticket_components).flat()
   const step4Display = allComponents.length === 0
     ? <span className="muted">Cannot search — no component found</span>
@@ -81,50 +84,386 @@ function CommitCard({ trace }) {
   const step3Status = trace.tickets.length === 0 ? 'skip'
     : Object.values(trace.ticket_components).some(v => v.length > 0) ? 'ok' : 'warn'
   const step4Status = allComponents.length > 0 ? 'ok' : 'warn'
-  const compEntries = Object.entries(trace.ticket_components)
 
   return (
     <div className="commit-card">
-      <div className="commit-meta">
-        <div>
+      <div className="commit-header" onClick={onToggle}>
+        <span className="commit-toggle">{expanded ? '▾' : '▸'}</span>
+        <div className="commit-header-text">
           <div className="commit-message">{trace.message}</div>
-          <div className="commit-info">{trace.author} &bull; {date} &bull; {trace.commit_id}</div>
+          <div className="commit-info">{trace.author} &bull; {formatDate(trace.timestamp)} &bull; {trace.commit_id}</div>
         </div>
         <StatusBadge status={trace.status} />
       </div>
-      <div className="pipeline-steps">
-        <Step num="①" label="Repo" value={<span>{trace.repo}</span>} status="ok" />
-        <Step num="②" label="Ticket" value={ticketList} status={step2Status} />
-        <Step num="③" label="Jira ticket" value={step3Display} status={step3Status} />
-        <Step num="④" label="Test search" value={step4Display} status={step4Status} />
-      </div>
+      {expanded && (
+        <div className="pipeline-steps">
+          <Step num="①" label="Repo"        value={<span>{trace.repo}</span>} status="ok" />
+          <Step num="②" label="Ticket"      value={ticketList}                 status={step2Status} />
+          <Step num="③" label="Jira ticket" value={step3Display}               status={step3Status} />
+          <Step num="④" label="Test search" value={step4Display}               status={step4Status} />
+        </div>
+      )}
     </div>
   )
 }
 
-function RepoSection({ repo, commits }) {
+function RepoSection({ repo, commits, expandedIds, onToggleCommit }) {
+  const [repoOpen, setRepoOpen] = useState(true)
+  const matched = commits.filter(c => c.status === 'matched').length
+  const gaps    = commits.length - matched
+
   return (
     <div className="repo-section">
-      <div className="repo-header">
+      <div className="repo-header" onClick={() => setRepoOpen(o => !o)}>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>{repoOpen ? '▾' : '▸'}</span>
         <span>📁</span>
         <span>{repo}</span>
         <span className="repo-count">{commits.length} commit{commits.length !== 1 ? 's' : ''}</span>
+        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.75 }}>
+          ✓ {matched} &nbsp;|&nbsp; ⚠ {gaps}
+        </span>
       </div>
-      {commits.map(c => <CommitCard key={c.commit_id + c.tickets.join()} trace={c} />)}
+      {repoOpen && commits.map(c => (
+        <CommitCard
+          key={c.commit_id + c.tickets.join()}
+          trace={c}
+          expanded={expandedIds.has(c.commit_id + c.tickets.join())}
+          onToggle={() => onToggleCommit(c.commit_id + c.tickets.join())}
+        />
+      ))}
     </div>
   )
 }
 
-export default function Dashboard() {
-  const [days, setDays] = useState(7)
-  const [data, setData] = useState(null)
+function ByRepoView({ grouped, expandedIds, onToggleCommit, onExpandAll, onCollapseAll }) {
+  return (
+    <div>
+      <div className="view-toolbar">
+        <span className="view-count">{grouped.length} repo{grouped.length !== 1 ? 's' : ''}</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={onExpandAll}>Expand all</button>
+          <button className="btn-secondary" onClick={onCollapseAll}>Collapse all</button>
+        </div>
+      </div>
+      {grouped.map(([repo, commits]) => (
+        <RepoSection
+          key={repo}
+          repo={repo}
+          commits={commits}
+          expandedIds={expandedIds}
+          onToggleCommit={onToggleCommit}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─── By Ticket view ──────────────────────────────────────────────────────────
+
+function DiffView({ hunks }) {
+  if (!hunks || hunks.length === 0) {
+    return <div className="diff-empty">No diff available for this file</div>
+  }
+  return (
+    <div className="diff-view">
+      {hunks.map((hunk, hi) => (
+        <div key={hi} className="diff-hunk">
+          <div className="diff-hunk-header">
+            @@ -{hunk.src_line} +{hunk.dst_line} @@
+          </div>
+          {hunk.lines.map((line, li) => (
+            <div key={li} className={`diff-line diff-${line.type.toLowerCase()}`}>
+              <span className="diff-ln diff-ln-src">{line.type !== 'ADDED'   ? line.src : ''}</span>
+              <span className="diff-ln diff-ln-dst">{line.type !== 'REMOVED' ? line.dst : ''}</span>
+              <span className="diff-marker">
+                {line.type === 'ADDED' ? '+' : line.type === 'REMOVED' ? '−' : ' '}
+              </span>
+              <span className="diff-text">{line.text}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const FILE_TYPE_CLS = { ADD: 'ft-add', MODIFY: 'ft-modify', DELETE: 'ft-delete', RENAME: 'ft-rename', COPY: 'ft-rename' }
+
+function FileRow({ repo, commitId, file }) {
+  const [open, setOpen]       = useState(false)
+  const [diff, setDiff]       = useState(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError]     = useState(null)
+
+  async function handleClick() {
+    if (!open && diff === null && !error) {
+      setLoading(true)
+      try {
+        const data = await fetchCommitDiff(repo, commitId, file.path)
+        setDiff(data)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    setOpen(o => !o)
+  }
+
+  return (
+    <div className="file-row-wrap">
+      <div className="file-row" onClick={handleClick}>
+        <span className="commit-toggle">{open ? '▾' : '▸'}</span>
+        <span className={`ft-badge ${FILE_TYPE_CLS[file.type] || 'ft-modify'}`}>{file.type}</span>
+        <span className="file-path">{file.path}</span>
+        {loading && <span className="inline-loading">loading…</span>}
+      </div>
+
+      {open && !loading && error && (
+        <div className="diff-error">
+          ⚠ {error}&nbsp;
+          <a href={diff?.stash_url} target="_blank" rel="noreferrer">Open in Stash ↗</a>
+        </div>
+      )}
+      {open && !loading && diff && !error && (
+        diff.truncated
+          ? <div className="diff-too-large">
+              ⚠ File too large to display inline.&nbsp;
+              <a href={diff.stash_url} target="_blank" rel="noreferrer">Open in Stash ↗</a>
+            </div>
+          : diff.error
+            ? <div className="diff-error">
+                ⚠ {diff.error}&nbsp;
+                {diff.stash_url && <a href={diff.stash_url} target="_blank" rel="noreferrer">Open in Stash ↗</a>}
+              </div>
+            : diff.hunks?.length === 0
+              ? <div className="diff-empty">
+                  No diff data returned by Stash.&nbsp;
+                  {diff.stash_url && <a href={diff.stash_url} target="_blank" rel="noreferrer">Open in Stash ↗</a>}
+                </div>
+              : <DiffView hunks={diff.hunks} />
+      )}
+    </div>
+  )
+}
+
+function TicketCommitRow({ trace }) {
+  const [open, setOpen]       = useState(false)
+  const [files, setFiles]     = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState(null)
+
+  async function handleClick() {
+    if (!open && files === null && !error) {
+      setLoading(true)
+      try {
+        const data = await fetchCommitFiles(trace.repo, trace.commit_id)
+        if (data.error === 'short_sha') {
+          setError('Old data — re-run the pipeline to refresh commit IDs')
+        } else {
+          setFiles(data.files)
+        }
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    setOpen(o => !o)
+  }
+
+  const shortId = trace.commit_id.slice(0, 8)
+
+  return (
+    <div className="ticket-commit-wrap">
+      {/* Commit header row */}
+      <div className="ticket-commit-row" onClick={handleClick}>
+        <span className="commit-toggle">{open ? '▾' : '▸'}</span>
+        <span className="repo-slug-tag">{trace.repo}</span>
+        <div className="ticket-commit-text">
+          <div className="commit-message" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {trace.message}
+          </div>
+          <div className="commit-info">
+            {trace.author} &bull; {formatDate(trace.timestamp)} &bull; {shortId}
+          </div>
+        </div>
+        {loading && <span className="inline-loading">loading files…</span>}
+      </div>
+
+      {/* File list */}
+      {open && !loading && error && (
+        <div className="file-list-error">⚠ Could not load files: {error}</div>
+      )}
+      {open && !loading && files && (
+        <div className="file-list">
+          {files.length === 0
+            ? <div className="file-empty">No file changes found</div>
+            : files.map(f => (
+                <FileRow
+                  key={f.path}
+                  repo={trace.repo}
+                  commitId={trace.commit_id}
+                  file={f}
+                />
+              ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TicketCard({ ticket }) {
+  const [open, setOpen] = useState(true)
+  const repoCount = new Set(ticket.commits.map(c => c.repo)).size
+
+  return (
+    <div className="ticket-card">
+      <div className="ticket-card-header" onClick={() => setOpen(o => !o)}>
+        <span className="commit-toggle">{open ? '▾' : '▸'}</span>
+        <span className="ticket-id">{ticket.id}</span>
+        <div className="ticket-meta-chips">
+          <span className="meta-chip">
+            {ticket.commits.length} commit{ticket.commits.length !== 1 ? 's' : ''}
+          </span>
+          <span className="meta-chip">
+            {repoCount} repo{repoCount !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <StatusBadge status={ticket.status} />
+      </div>
+
+      {open && (
+        <div className="ticket-card-body">
+          {/* Ticket metadata */}
+          <div className="ticket-details">
+            <div className="ticket-detail-row">
+              <span className="td-label">Tag</span>
+              <span className="td-value">
+                {ticket.tag
+                  ? <span className="tag-text">{ticket.tag}</span>
+                  : ticket.status === 'no_permission'
+                    ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied</span>
+                    : <span className="muted">No tag field on this ticket</span>
+                }
+              </span>
+            </div>
+            <div className="ticket-detail-row">
+              <span className="td-label">Component</span>
+              <span className="td-value">
+                {ticket.components.length > 0
+                  ? ticket.components.map(c => <span key={c} className="component-tag">{c}</span>)
+                  : <span className="muted">No component — cannot match tests</span>
+                }
+              </span>
+            </div>
+            <div className="ticket-detail-row">
+              <span className="td-label">Sub-Component</span>
+              <span className="td-value muted">Not Defined</span>
+            </div>
+            <div className="ticket-detail-row">
+              <span className="td-label">Test search</span>
+              <span className="td-value">
+                {ticket.components.length > 0
+                  ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      JQL: <code>component = &quot;{ticket.components[0]}&quot;</code> + Selenium filter
+                    </span>
+                  : <span className="muted">Skipped — no component</span>
+                }
+              </span>
+            </div>
+          </div>
+
+          {/* Commits under this ticket */}
+          <div className="ticket-commits-label">
+            Commits referencing this ticket
+          </div>
+          {ticket.commits.map(c => (
+            <TicketCommitRow key={c.commit_id + c.repo} trace={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NoTicketSection({ commits }) {
+  const [open, setOpen] = useState(false)
+  if (commits.length === 0) return null
+
+  return (
+    <div className="ticket-card" style={{ opacity: 0.8 }}>
+      <div className="ticket-card-header" onClick={() => setOpen(o => !o)}>
+        <span className="commit-toggle">{open ? '▾' : '▸'}</span>
+        <span className="ticket-id" style={{ color: 'var(--text-muted)' }}>No Jira Ticket</span>
+        <div className="ticket-meta-chips">
+          <span className="meta-chip">{commits.length} commit{commits.length !== 1 ? 's' : ''}</span>
+        </div>
+        <StatusBadge status="no_ticket" />
+      </div>
+      {open && (
+        <div className="ticket-card-body">
+          <div className="ticket-details" style={{ marginBottom: 8 }}>
+            <div className="ticket-detail-row">
+              <span className="td-label">Reason</span>
+              <span className="td-value muted">
+                No ADINFRA-* or IAPP-* ticket ID found in commit message — cannot trace pipeline further
+              </span>
+            </div>
+          </div>
+          {commits.map(c => (
+            <TicketCommitRow key={c.commit_id + c.repo} trace={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ByTicketView({ tickets, noTicketCommits }) {
+  const totalTickets = tickets.length
+  const matchedTickets = tickets.filter(t => t.status === 'matched').length
+
+  return (
+    <div>
+      <div className="view-toolbar">
+        <span className="view-count">
+          {totalTickets} unique ticket{totalTickets !== 1 ? 's' : ''}
+          &nbsp;—&nbsp;
+          <span style={{ color: 'var(--success)' }}>✓ {matchedTickets} matched</span>
+          &nbsp;|&nbsp;
+          <span style={{ color: 'var(--error)' }}>⚠ {totalTickets - matchedTickets} gaps</span>
+          {noTicketCommits.length > 0 && (
+            <span style={{ color: 'var(--text-muted)' }}>
+              &nbsp;+&nbsp;{noTicketCommits.length} commits with no ticket
+            </span>
+          )}
+        </span>
+      </div>
+      {tickets.map(ticket => (
+        <TicketCard key={ticket.id} ticket={ticket} />
+      ))}
+      <NoTicketSection commits={noTicketCommits} />
+    </div>
+  )
+}
+
+// ─── Dashboard shell ─────────────────────────────────────────────────────────
+
+export default function Dashboard() {
+  const [days, setDays]         = useState(7)
+  const [data, setData]         = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+  const [activeTab, setActiveTab] = useState('by-repo')
+  const [expandedIds, setExpandedIds] = useState(new Set())
 
   async function run() {
     setLoading(true)
     setError(null)
     setData(null)
+    setExpandedIds(new Set())
     try {
       const result = await fetchTrace(days)
       setData(result)
@@ -135,7 +474,15 @@ export default function Dashboard() {
     }
   }
 
-  // Group trace by repo, preserving order of first appearance
+  const toggleCommit = useCallback((id) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }, [])
+
+  // By Repo grouping
   const grouped = useMemo(() => {
     if (!data) return []
     const map = new Map()
@@ -144,6 +491,47 @@ export default function Dashboard() {
       map.get(t.repo).push(t)
     }
     return [...map.entries()]
+  }, [data])
+
+  const allIds = useMemo(() =>
+    data ? data.trace.map(t => t.commit_id + t.tickets.join()) : []
+  , [data])
+
+  // By Ticket grouping
+  const { tickets, noTicketCommits } = useMemo(() => {
+    if (!data) return { tickets: [], noTicketCommits: [] }
+
+    const map = new Map()
+    const noTicket = []
+
+    for (const trace of data.trace) {
+      if (trace.tickets.length === 0) {
+        noTicket.push(trace)
+        continue
+      }
+      for (const ticket of trace.tickets) {
+        if (!map.has(ticket)) {
+          const tag        = trace.ticket_tags[ticket] || ''
+          const components = trace.ticket_components[ticket] || []
+          const slugs      = trace.ticket_slugs[ticket] || []
+          const permErr    = trace.status === 'no_permission'
+          const status     = components.length > 0 ? 'matched'
+                           : permErr ? 'no_permission'
+                           : 'no_component'
+          map.set(ticket, { id: ticket, tag, slugs, components, status, commits: [] })
+        }
+        map.get(ticket).commits.push(trace)
+      }
+    }
+
+    // matched first, then alphabetical
+    const sorted = [...map.values()].sort((a, b) => {
+      if (a.status === 'matched' && b.status !== 'matched') return -1
+      if (a.status !== 'matched' && b.status === 'matched') return  1
+      return a.id.localeCompare(b.id)
+    })
+
+    return { tickets: sorted, noTicketCommits: noTicket }
   }, [data])
 
   const matched = data?.trace.filter(t => t.status === 'matched').length ?? 0
@@ -191,9 +579,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Summary */}
+        {/* Results */}
         {data && !loading && (
           <>
+            {/* Summary strip */}
             <div className="summary-strip">
               <div className="summary-stat">
                 <div className="num">{data.repos_scanned}</div>
@@ -207,7 +596,12 @@ export default function Dashboard() {
               <div className="summary-divider" />
               <div className="summary-stat">
                 <div className="num">{data.commits_processed}</div>
-                <div className="lbl">Commits processed</div>
+                <div className="lbl">Commits</div>
+              </div>
+              <div className="summary-divider" />
+              <div className="summary-stat">
+                <div className="num">{tickets.length}</div>
+                <div className="lbl">Unique tickets</div>
               </div>
               <div className="summary-divider" />
               <div className="summary-stat">
@@ -217,13 +611,42 @@ export default function Dashboard() {
               <div className="summary-divider" />
               <div className="summary-stat">
                 <div className="num" style={{ color: 'var(--error)' }}>{gaps}</div>
-                <div className="lbl">Coverage gaps</div>
+                <div className="lbl">Gaps ⚠</div>
               </div>
             </div>
 
-            {grouped.map(([repo, commits]) => (
-              <RepoSection key={repo} repo={repo} commits={commits} />
-            ))}
+            {/* Tab bar */}
+            <div className="tab-bar">
+              <button
+                className={`tab-btn ${activeTab === 'by-repo' ? 'active' : ''}`}
+                onClick={() => setActiveTab('by-repo')}
+              >
+                📁 By Repo
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'by-ticket' ? 'active' : ''}`}
+                onClick={() => setActiveTab('by-ticket')}
+              >
+                🎫 By Ticket
+              </button>
+            </div>
+
+            {/* Tab content */}
+            {activeTab === 'by-repo' && (
+              <ByRepoView
+                grouped={grouped}
+                expandedIds={expandedIds}
+                onToggleCommit={toggleCommit}
+                onExpandAll={() => setExpandedIds(new Set(allIds))}
+                onCollapseAll={() => setExpandedIds(new Set())}
+              />
+            )}
+            {activeTab === 'by-ticket' && (
+              <ByTicketView
+                tickets={tickets}
+                noTicketCommits={noTicketCommits}
+              />
+            )}
           </>
         )}
 
