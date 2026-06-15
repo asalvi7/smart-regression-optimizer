@@ -38,6 +38,28 @@ class RegressionEvent(BaseModel):
     total_tests_saved: int
 
 
+class CommitTrace(BaseModel):
+    commit_id: str
+    repo: str
+    message: str
+    author: str
+    timestamp: datetime
+    tickets: list[str]
+    ticket_tags: dict[str, str]             # ticket -> raw tag text
+    ticket_slugs: dict[str, list[str]]      # ticket -> repo slugs from tag
+    ticket_components: dict[str, list[str]]     # ticket -> component names (customfield_10205)
+    ticket_sub_components: dict[str, list[str]] # ticket -> sub-component names (customfield_10206)
+    status: str  # matched | no_ticket | no_component | no_permission
+
+
+class PipelineTraceResponse(BaseModel):
+    since_days: int
+    repos_scanned: int
+    repos_with_changes: int
+    commits_processed: int
+    trace: list[CommitTrace]
+
+
 class CommitScanRequest(BaseModel):
     since_days: int = 7
 

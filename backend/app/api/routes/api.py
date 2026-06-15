@@ -5,7 +5,8 @@ import asyncio
 from app.services.stash_service import get_repos_with_recent_commits, get_all_repos
 from app.services.selector import select_tests_for_commits
 from app.services.ranker import rank_tests
-from app.models.schemas import CommitScanResponse, TestCase, CoverageGap
+from app.services.trace_service import build_pipeline_trace
+from app.models.schemas import CommitScanResponse, TestCase, CoverageGap, PipelineTraceResponse
 from app.core.scheduler import event_store, run_poll
 
 router = APIRouter()
@@ -50,6 +51,40 @@ async def get_test_recommendations(since_days: int = Query(default=7, ge=1, le=9
         "tests": ranked,
         "gaps": gaps,
     }
+
+
+@router.get("/debug/ticket/{ticket_id}")
+async def debug_ticket(ticket_id: str):
+    """Return all raw Jira fields for a ticket — used to discover custom field IDs."""
+    import httpx, base64
+    from app.core.config import get_settings
+    s = get_settings()
+    token = base64.b64encode(f"{s.jira_email}:{s.jira_token}".encode()).decode()
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"{s.jira_base_url}/rest/api/3/issue/{ticket_id}",
+            headers={"Authorization": f"Basic {token}", "Content-Type": "application/json"},
+        )
+    if resp.status_code != 200:
+        return {
+            "error": f"Jira returned HTTP {resp.status_code}",
+            "ticket": ticket_id,
+            "url": f"{s.jira_base_url}/rest/api/3/issue/{ticket_id}",
+            "jira_response": resp.text[:500],
+        }
+    data = resp.json()
+    fields = data.get("fields", {})
+    # Return only non-null fields to keep it readable
+    return {
+        "status": "ok",
+        "ticket": ticket_id,
+        "non_null_fields": {k: v for k, v in fields.items() if v is not None and v != [] and v != {}},
+    }
+
+
+@router.get("/trace", response_model=PipelineTraceResponse)
+async def get_pipeline_trace(since_days: int = Query(default=7, ge=1, le=90)):
+    return await build_pipeline_trace(since_days=since_days)
 
 
 @router.get("/events")

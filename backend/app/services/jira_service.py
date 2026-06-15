@@ -29,6 +29,7 @@ _JIRA_SEMAPHORE = asyncio.Semaphore(5)
 
 # Cache tag lookups so the same ticket is never fetched twice in one run
 _tag_cache: dict[str, list[str]] = {}
+_tag_text_cache: dict[str, str] = {}  # raw tag text for display in trace
 
 
 async def _jql_search(jql: str, fields: list[str]) -> list[dict]:
@@ -63,9 +64,11 @@ async def _jql_search(jql: str, fields: list[str]) -> list[dict]:
 
 
 def _extract_tag_text(customfield_10313) -> str:
-    """Pull plain text out of the Jira document object stored in the Tag field."""
+    """Pull plain text out of the Tag field — handles both plain string and ADF document."""
     if not customfield_10313:
         return ""
+    if isinstance(customfield_10313, str):
+        return customfield_10313.strip()
     try:
         texts = []
         for block in customfield_10313.get("content", []):
@@ -121,9 +124,95 @@ async def get_tag_repos_for_ticket(ticket_id: str) -> list[str]:
             fields = resp.json().get("fields", {})
 
     tag_text = _extract_tag_text(fields.get("customfield_10313"))
+    _tag_text_cache[ticket_id] = tag_text
     result = extract_repo_slugs_from_tag(tag_text)
     _tag_cache[ticket_id] = result
     return result
+
+
+def get_cached_tag_text(ticket_id: str) -> str:
+    return _tag_text_cache.get(ticket_id, "")
+
+
+_ticket_details_cache: dict[str, dict] = {}
+
+
+async def get_ticket_details(ticket_id: str) -> dict:
+    """
+    Fetch a feature ticket and return tag, repo slugs, and components.
+    Components are read directly from the ticket's `components` field — no mapping JSON.
+    Returns: {tag: str, slugs: list[str], components: list[str]}
+    """
+    if ticket_id in _ticket_details_cache:
+        return _ticket_details_cache[ticket_id]
+
+    async with _JIRA_SEMAPHORE:
+        if ticket_id in _ticket_details_cache:
+            return _ticket_details_cache[ticket_id]
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(
+                f"{settings.jira_base_url}/rest/api/3/issue/{ticket_id}"
+                "?fields=customfield_10313",
+                headers=JIRA_HEADERS,
+            )
+            if resp.status_code == 401:
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "error": "auth_failed"}
+                _ticket_details_cache[ticket_id] = result
+                return result
+            if resp.status_code in (403, 404):
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "error": "no_permission"}
+                _ticket_details_cache[ticket_id] = result
+                _tag_text_cache[ticket_id] = ""
+                _tag_cache[ticket_id] = []
+                return result
+            resp.raise_for_status()
+            fields = resp.json().get("fields", {})
+
+    tag_text = _extract_tag_text(fields.get("customfield_10313"))
+    slugs = extract_repo_slugs_from_tag(tag_text)
+
+    # Component = repo slug(s) from the tag (e.g. "campaign-management" from "campaign-management:2026.5.144")
+    # Sub-component is not defined at this stage
+    components = slugs
+    sub_components = []
+
+    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "error": None}
+    _ticket_details_cache[ticket_id] = result
+    _tag_text_cache[ticket_id] = tag_text
+    _tag_cache[ticket_id] = slugs
+    return result
+
+
+async def search_tests_by_components(component_names: list[str]) -> list[TestCase]:
+    """Search test cases using component names taken directly from a Jira feature ticket."""
+    if not component_names:
+        return []
+
+    test_cases = []
+    for component in component_names:
+        jql = f'component = "{component}" AND {SELENIUM_FILTER}'
+        issues = await _jql_search(jql, ["summary", "components", "customfield_10100"])
+        for issue in issues:
+            fields = issue.get("fields", {})
+            sub_comp = fields.get("customfield_10100")
+            sub_component = sub_comp.get("value", "") if sub_comp else ""
+            test_cases.append(TestCase(
+                jira_id=issue["key"],
+                summary=fields.get("summary", ""),
+                component=component,
+                sub_component=sub_component,
+                layer_found=2,
+                impact_score=0.0,
+            ))
+
+    seen: set[str] = set()
+    unique = []
+    for tc in test_cases:
+        if tc.jira_id not in seen:
+            seen.add(tc.jira_id)
+            unique.append(tc)
+    return unique
 
 
 async def layer1_traverse(ticket_id: str) -> list[TestCase]:
