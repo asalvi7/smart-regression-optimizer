@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { fetchTrace, fetchCommitFiles, fetchCommitDiff } from '../utils/api'
+import { fetchTrace, fetchCommitFiles, fetchCommitDiff, fetchTests } from '../utils/api'
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -367,7 +367,13 @@ function TicketCard({ ticket }) {
               <span className="td-value">
                 {ticket.components.length > 0
                   ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      JQL: <code>component = &quot;{ticket.components[0]}&quot;</code> + Selenium filter
+                      {ticket.components.map((c, i) => (
+                        <span key={c}>
+                          {i > 0 && <span style={{ margin: '0 4px', opacity: 0.5 }}>+</span>}
+                          JQL: <code>component = &quot;{c}&quot;</code>
+                        </span>
+                      ))}
+                      {' '}+ Selenium filter
                     </span>
                   : <span className="muted">Skipped — no component</span>
                 }
@@ -449,6 +455,161 @@ function ByTicketView({ tickets, noTicketCommits }) {
   )
 }
 
+// ─── Recommended Tests view ──────────────────────────────────────────────────
+
+const PRIORITY_LABEL = { '1': 'Highest', '2': 'High', '3': 'Medium', '4': 'Low', '5': 'Lowest' }
+const PRIORITY_COLOR = { '1': '#dc2626', '2': '#ea580c', '3': '#ca8a04', '4': '#6b7280', '5': '#9ca3af' }
+
+function PriorityBadge({ priorityId }) {
+  const id = String(priorityId || '4')
+  return (
+    <span style={{
+      background: PRIORITY_COLOR[id] ?? '#6b7280',
+      color: '#fff', borderRadius: 4,
+      fontSize: 10, fontWeight: 700, padding: '2px 6px',
+      letterSpacing: '0.04em', textTransform: 'uppercase',
+    }}>
+      {PRIORITY_LABEL[id] ?? 'Low'}
+    </span>
+  )
+}
+
+function ScorePill({ score }) {
+  const [bg, label] =
+    score >= 1.1 ? ['#dc2626', 'Critical'] :
+    score >= 0.8 ? ['#ea580c', 'High']     :
+    score >= 0.5 ? ['#ca8a04', 'Medium']   :
+                   ['#6b7280', 'Low']
+  return (
+    <span style={{
+      background: bg, color: '#fff', borderRadius: 4,
+      fontSize: 10, fontWeight: 700, padding: '2px 6px',
+      letterSpacing: '0.04em', textTransform: 'uppercase',
+    }}>
+      {label}
+    </span>
+  )
+}
+
+function RecommendedTestsView({ tests, loading, error }) {
+  if (loading) return (
+    <div className="state-box">
+      <div className="spinner" />
+      <div>Running test selector + ranker…</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+        This queries Jira for each component — takes 30–60s
+      </div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="state-box">
+      <div className="error-msg">⚠ {error}</div>
+    </div>
+  )
+
+  if (!tests) return (
+    <div className="state-box">
+      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+        Click <strong>Load Recommended Tests</strong> to run the ranker.
+      </div>
+    </div>
+  )
+
+  const uniqueComponents = [...new Set(tests.tests.map(t => t.component))].length
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      {/* Summary strip */}
+      <div className="summary-strip" style={{ marginBottom: 16 }}>
+        <div className="summary-stat">
+          <div className="num">{tests.total_tests}</div>
+          <div className="lbl">Test cases</div>
+        </div>
+        <div className="summary-divider" />
+        <div className="summary-stat">
+          <div className="num">{uniqueComponents}</div>
+          <div className="lbl">Components</div>
+        </div>
+        <div className="summary-divider" />
+        <div className="summary-stat">
+          <div className="num" style={{ color: 'var(--error)' }}>{tests.coverage_gaps}</div>
+          <div className="lbl">Coverage gaps</div>
+        </div>
+      </div>
+
+      {/* Test list */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+        {/* Header row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '48px 110px 1fr 130px 80px 80px 80px',
+          padding: '8px 16px',
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border)',
+          fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+        }}>
+          <span>#</span>
+          <span>Jira ID</span>
+          <span>Test Summary</span>
+          <span>Component</span>
+          <span>Priority</span>
+          <span>Frequency</span>
+          <span>Score</span>
+        </div>
+
+        {tests.tests.map((t, i) => (
+          <div key={t.jira_id} style={{
+            display: 'grid',
+            gridTemplateColumns: '48px 110px 1fr 130px 80px 80px 80px',
+            padding: '10px 16px',
+            borderBottom: '1px solid var(--border)',
+            alignItems: 'center',
+            background: i % 2 === 0 ? 'var(--bg)' : 'var(--bg-secondary)',
+            fontSize: 13,
+          }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</span>
+
+            <a
+              href={`https://jira.mediaocean.com/browse/${t.jira_id}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12, fontFamily: 'monospace' }}
+            >
+              {t.jira_id}
+            </a>
+
+            <span style={{
+              fontSize: 12, color: 'var(--text)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              paddingRight: 16,
+            }}
+              title={t.summary}
+            >
+              {t.summary}
+            </span>
+
+            <span>
+              <span className="component-tag" style={{ fontSize: 11 }}>{t.component}</span>
+            </span>
+
+            <span>
+              <PriorityBadge priorityId={t.ticket_priority_id} />
+            </span>
+
+            <span style={{ fontSize: 11, color: t.frequency > 1 ? 'var(--accent)' : 'var(--text-muted)', fontWeight: t.frequency > 1 ? 700 : 400 }}>
+              ×{t.frequency} {t.frequency > 1 ? 'tickets' : 'ticket'}
+            </span>
+
+            <span><ScorePill score={t.impact_score} /></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard shell ─────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -458,11 +619,16 @@ export default function Dashboard() {
   const [error, setError]       = useState(null)
   const [activeTab, setActiveTab] = useState('by-repo')
   const [expandedIds, setExpandedIds] = useState(new Set())
+  const [tests, setTests]           = useState(null)
+  const [testsLoading, setTestsLoading] = useState(false)
+  const [testsError, setTestsError]   = useState(null)
 
   async function run() {
     setLoading(true)
     setError(null)
     setData(null)
+    setTests(null)
+    setTestsError(null)
     setExpandedIds(new Set())
     try {
       const result = await fetchTrace(days)
@@ -471,6 +637,20 @@ export default function Dashboard() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadTests() {
+    if (tests || testsLoading) return
+    setTestsLoading(true)
+    setTestsError(null)
+    try {
+      const result = await fetchTests(days)
+      setTests(result)
+    } catch (e) {
+      setTestsError(e.message)
+    } finally {
+      setTestsLoading(false)
     }
   }
 
@@ -629,6 +809,12 @@ export default function Dashboard() {
               >
                 🎫 By Ticket
               </button>
+              <button
+                className={`tab-btn ${activeTab === 'recommended' ? 'active' : ''}`}
+                onClick={() => { setActiveTab('recommended'); loadTests() }}
+              >
+                🧪 Recommended Tests
+              </button>
             </div>
 
             {/* Tab content */}
@@ -645,6 +831,13 @@ export default function Dashboard() {
               <ByTicketView
                 tickets={tickets}
                 noTicketCommits={noTicketCommits}
+              />
+            )}
+            {activeTab === 'recommended' && (
+              <RecommendedTestsView
+                tests={tests}
+                loading={testsLoading}
+                error={testsError}
               />
             )}
           </>
