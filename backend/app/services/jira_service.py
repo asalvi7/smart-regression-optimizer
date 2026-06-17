@@ -89,7 +89,7 @@ def extract_repo_slugs_from_tag(tag_text: str) -> list[str]:
     """
     import re
     slugs = []
-    for part in tag_text.split(","):
+    for part in re.split(r'[,;]', tag_text):
         part = part.strip()
         match = re.match(r'^([a-z0-9\-]+)[:/]', part)
         if match:
@@ -153,15 +153,15 @@ async def get_ticket_details(ticket_id: str) -> dict:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.jira_base_url}/rest/api/3/issue/{ticket_id}"
-                "?fields=customfield_10313",
+                "?fields=customfield_10313,priority",
                 headers=JIRA_HEADERS,
             )
             if resp.status_code == 401:
-                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "error": "auth_failed"}
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "priority_id": "4", "error": "auth_failed"}
                 _ticket_details_cache[ticket_id] = result
                 return result
             if resp.status_code in (403, 404):
-                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "error": "no_permission"}
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "priority_id": "4", "error": "no_permission"}
                 _ticket_details_cache[ticket_id] = result
                 _tag_text_cache[ticket_id] = ""
                 _tag_cache[ticket_id] = []
@@ -171,13 +171,11 @@ async def get_ticket_details(ticket_id: str) -> dict:
 
     tag_text = _extract_tag_text(fields.get("customfield_10313"))
     slugs = extract_repo_slugs_from_tag(tag_text)
-
-    # Component = repo slug(s) from the tag (e.g. "campaign-management" from "campaign-management:2026.5.144")
-    # Sub-component is not defined at this stage
     components = slugs
     sub_components = []
+    priority_id = str(fields.get("priority", {}).get("id", "4"))  # "1"=Highest … "5"=Lowest
 
-    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "error": None}
+    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
     _ticket_details_cache[ticket_id] = result
     _tag_text_cache[ticket_id] = tag_text
     _tag_cache[ticket_id] = slugs
