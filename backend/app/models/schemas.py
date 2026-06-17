@@ -19,6 +19,8 @@ class TestCase(BaseModel):
     sub_component: str
     layer_found: int
     impact_score: float
+    frequency: int = 1          # how many commits triggered this test case
+    ticket_priority_id: str = "4"  # best (lowest id) priority among triggering tickets
 
 
 class CoverageGap(BaseModel):
