@@ -41,13 +41,33 @@ def _commit_overlap_bonus(test: TestCase, commits: list[Commit]) -> float:
     return 0.0
 
 
+def _frequency_bonus(frequency: int) -> float:
+    # +0.1 per additional commit that triggered this test, capped at +0.3
+    return min((frequency - 1) * 0.1, 0.3)
+
+
+_PRIORITY_BONUS = {
+    "1": 0.3,   # Highest
+    "2": 0.2,   # High
+    "3": 0.1,   # Medium
+    "4": 0.0,   # Low
+    "5": 0.0,   # Lowest / Trivial
+}
+
+
+def _priority_bonus(priority_id: str) -> float:
+    return _PRIORITY_BONUS.get(priority_id, 0.0)
+
+
 def rank_tests(tests: list[TestCase], commits: list[Commit]) -> list[TestCase]:
     for test in tests:
         score = (
             _base_score(test.sub_component)
             + _layer_bonus(test.layer_found)
             + _commit_overlap_bonus(test, commits)
+            + _frequency_bonus(test.frequency)
+            + _priority_bonus(test.ticket_priority_id)
         )
-        test.impact_score = round(min(score, 1.0), 3)
+        test.impact_score = round(score, 3)
 
     return sorted(tests, key=lambda t: t.impact_score, reverse=True)
