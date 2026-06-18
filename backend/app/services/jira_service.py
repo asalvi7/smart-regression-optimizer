@@ -1,10 +1,39 @@
 import httpx
 import base64
 import asyncio
+import json
+import os
 from app.core.config import get_settings
 from app.models.schemas import TestCase
 
 settings = get_settings()
+
+# Load slug → Jira component mapping (repo_component_mapping.json)
+_MAPPING_PATH = os.path.join(os.path.dirname(__file__), "../../config/repo_component_mapping.json")
+try:
+    with open(_MAPPING_PATH) as f:
+        _REPO_COMPONENT_MAP: dict = json.load(f)
+except Exception:
+    _REPO_COMPONENT_MAP = {}
+
+
+def slugs_to_jira_components(slugs: list[str]) -> list[str]:
+    """Map repo slugs from the Tag field to Jira component names for test search."""
+    components = []
+    seen = set()
+    for slug in slugs:
+        mapped = _REPO_COMPONENT_MAP.get(slug, {})
+        if mapped:
+            for comp_name in mapped.keys():
+                if comp_name not in seen:
+                    seen.add(comp_name)
+                    components.append(comp_name)
+        else:
+            # No mapping found — try the slug directly as a Jira component name
+            if slug not in seen:
+                seen.add(slug)
+                components.append(slug)
+    return components
 
 _token = base64.b64encode(
     f"{settings.jira_email}:{settings.jira_token}".encode()
@@ -25,11 +54,15 @@ SELENIUM_FILTER = (
 )
 
 # Max concurrent requests to Jira to avoid 429 rate limiting
-_JIRA_SEMAPHORE = asyncio.Semaphore(5)
+_JIRA_SEMAPHORE = asyncio.Semaphore(3)
+_SEARCH_SEMAPHORE = asyncio.Semaphore(3)
 
 # Cache tag lookups so the same ticket is never fetched twice in one run
 _tag_cache: dict[str, list[str]] = {}
 _tag_text_cache: dict[str, str] = {}  # raw tag text for display in trace
+
+# Cache test search results by component set — components change rarely so this is safe to persist
+_search_cache: dict[tuple, list[TestCase]] = {}
 
 
 async def _jql_search(jql: str, fields: list[str]) -> list[dict]:
@@ -48,12 +81,23 @@ async def _jql_search(jql: str, fields: list[str]) -> list[dict]:
             if next_page_token:
                 payload["nextPageToken"] = next_page_token
 
-            resp = await client.post(
-                f"{settings.jira_base_url}/rest/api/3/search/jql",
-                headers=JIRA_HEADERS,
-                json=payload,
-            )
-            resp.raise_for_status()
+            for attempt in range(3):
+                resp = await client.post(
+                    f"{settings.jira_base_url}/rest/api/3/search/jql",
+                    headers=JIRA_HEADERS,
+                    json=payload,
+                )
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 5 * (attempt + 1)))
+                    print(f"[jira] 429 rate limit — waiting {retry_after}s (attempt {attempt+1})")
+                    await asyncio.sleep(retry_after)
+                    continue
+                resp.raise_for_status()
+                break
+            else:
+                print(f"[jira] gave up after 3 retries on 429 — skipping page")
+                break
+
             data = resp.json()
             issues.extend(data.get("issues", []))
             next_page_token = data.get("nextPageToken")
@@ -84,6 +128,7 @@ def extract_repo_slugs_from_tag(tag_text: str) -> list[str]:
     """
     Tag examples:
       'campaign-management/2026.5.110'
+      'campaign-management-2026.5.173'
       'prisma-locale-bundle:2026.5.6, campaign-management:2026.5.80'
     Returns the repo slug prefix(es): ['campaign-management', 'prisma-locale-bundle']
     """
@@ -91,7 +136,8 @@ def extract_repo_slugs_from_tag(tag_text: str) -> list[str]:
     slugs = []
     for part in re.split(r'[,;]', tag_text):
         part = part.strip()
-        match = re.match(r'^([a-z0-9\-]+)[:/]', part)
+        # Match repo slug before :, /, or -<version> pattern
+        match = re.match(r'^([a-z0-9\-]+?)(?:[:/\-](?:\d+\.|\d{4}))', part)
         if match:
             slugs.append(match.group(1))
     return slugs
@@ -171,11 +217,12 @@ async def get_ticket_details(ticket_id: str) -> dict:
 
     tag_text = _extract_tag_text(fields.get("customfield_10313"))
     slugs = extract_repo_slugs_from_tag(tag_text)
-    components = slugs
+    components = slugs  # keep slugs for trace display
+    jira_components = slugs_to_jira_components(slugs)  # mapped Jira component names for test search
     sub_components = []
     priority_id = str(fields.get("priority", {}).get("id", "4"))  # "1"=Highest … "5"=Lowest
 
-    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
+    result = {"tag": tag_text, "slugs": slugs, "components": components, "jira_components": jira_components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
     _ticket_details_cache[ticket_id] = result
     _tag_text_cache[ticket_id] = tag_text
     _tag_cache[ticket_id] = slugs
@@ -183,18 +230,31 @@ async def get_ticket_details(ticket_id: str) -> dict:
 
 
 async def search_tests_by_components(component_names: list[str]) -> list[TestCase]:
-    """Search test cases using component names taken directly from a Jira feature ticket."""
+    """Search test cases for a set of components — batched into one JQL query, result cached."""
     if not component_names:
         return []
 
-    test_cases = []
-    for component in component_names:
-        jql = f'component = "{component}" AND {SELENIUM_FILTER}'
+    cache_key = tuple(sorted(component_names))
+    if cache_key in _search_cache:
+        return _search_cache[cache_key]
+
+    async with _SEARCH_SEMAPHORE:
+        # Re-check after acquiring semaphore — another coroutine may have populated it
+        if cache_key in _search_cache:
+            return _search_cache[cache_key]
+
+        quoted = ", ".join(f'"{c}"' for c in component_names)
+        jql = f'component in ({quoted}) AND {SELENIUM_FILTER}'
         issues = await _jql_search(jql, ["summary", "components", "customfield_10100"])
+
+        component_set = set(component_names)
+        test_cases = []
         for issue in issues:
             fields = issue.get("fields", {})
             sub_comp = fields.get("customfield_10100")
             sub_component = sub_comp.get("value", "") if sub_comp else ""
+            issue_comps = [c["name"] for c in fields.get("components", [])]
+            component = next((c for c in issue_comps if c in component_set), component_names[0])
             test_cases.append(TestCase(
                 jira_id=issue["key"],
                 summary=fields.get("summary", ""),
@@ -204,13 +264,15 @@ async def search_tests_by_components(component_names: list[str]) -> list[TestCas
                 impact_score=0.0,
             ))
 
-    seen: set[str] = set()
-    unique = []
-    for tc in test_cases:
-        if tc.jira_id not in seen:
-            seen.add(tc.jira_id)
-            unique.append(tc)
-    return unique
+        seen: set[str] = set()
+        unique = []
+        for tc in test_cases:
+            if tc.jira_id not in seen:
+                seen.add(tc.jira_id)
+                unique.append(tc)
+
+        _search_cache[cache_key] = unique
+        return unique
 
 
 async def layer1_traverse(ticket_id: str) -> list[TestCase]:
