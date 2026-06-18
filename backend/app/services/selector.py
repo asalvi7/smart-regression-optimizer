@@ -21,7 +21,8 @@ async def select_tests_for_commit(commit: Commit) -> tuple[list[TestCase], list[
 
     for ticket in commit.jira_tickets:
         details = await get_ticket_details(ticket)
-        components = details["components"]
+        # Use mapped Jira component names for test search; fall back to raw slugs
+        components = details.get("jira_components") or details["components"]
         priority_id = details.get("priority_id", "4")
 
         if not components:
