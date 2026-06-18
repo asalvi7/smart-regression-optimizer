@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { fetchTrace, fetchCommitFiles, fetchCommitDiff, fetchTests } from '../utils/api'
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -491,7 +491,13 @@ function ScorePill({ score }) {
   )
 }
 
+const PAGE_SIZE = 20
+
 function RecommendedTestsView({ tests, loading, error }) {
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [tests])
+
   if (loading) return (
     <div className="state-box">
       <div className="spinner" />
@@ -559,7 +565,7 @@ function RecommendedTestsView({ tests, loading, error }) {
           <span>Score</span>
         </div>
 
-        {tests.tests.map((t, i) => (
+        {tests.tests.slice(0, visibleCount).map((t, i) => (
           <div key={t.jira_id} style={{
             display: 'grid',
             gridTemplateColumns: '48px 110px 1fr 130px 80px 80px 80px',
@@ -606,6 +612,21 @@ function RecommendedTestsView({ tests, loading, error }) {
           </div>
         ))}
       </div>
+
+      {visibleCount < tests.tests.length && (
+        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+          <button
+            onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+            style={{
+              padding: '8px 24px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--bg-secondary)', color: 'var(--text)', cursor: 'pointer',
+              fontSize: 13, fontWeight: 600,
+            }}
+          >
+            Load more — {tests.tests.length - visibleCount} remaining
+          </button>
+        </div>
+      )}
     </div>
   )
 }
