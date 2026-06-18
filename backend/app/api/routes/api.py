@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timezone, timedelta
 import asyncio
+import httpx
 
 from app.services.stash_service import get_repos_with_recent_commits, get_all_repos, get_commit_files, get_commit_diff
 from app.services.selector import select_tests_for_commits
@@ -17,10 +18,15 @@ async def get_commits(
     since_days: int = Query(default=7, ge=1, le=90),
     limit: int = Query(default=100, ge=1, le=500),
 ):
-    all_repos, repo_commits = await asyncio.gather(
-        get_all_repos(),
-        get_repos_with_recent_commits(since_days=since_days),
-    )
+    try:
+        all_repos, repo_commits = await asyncio.gather(
+            get_all_repos(),
+            get_repos_with_recent_commits(since_days=since_days),
+        )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Cannot reach Stash server. Check your VPN connection.")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Stash returned HTTP {exc.response.status_code}.")
     all_commits = [c for commits in repo_commits.values() for c in commits]
 
     # Truncate message so the response stays small
@@ -39,18 +45,22 @@ async def get_commits(
 
 @router.get("/tests")
 async def get_test_recommendations(since_days: int = Query(default=7, ge=1, le=90)):
-    repo_commits = await get_repos_with_recent_commits(since_days=since_days)
-    all_commits = [c for commits in repo_commits.values() for c in commits]
-
-    selected, gaps = await select_tests_for_commits(all_commits)
-    ranked = rank_tests(selected, all_commits)
-
-    return {
-        "total_tests": len(ranked),
-        "coverage_gaps": len(gaps),
-        "tests": ranked,
-        "gaps": gaps,
-    }
+    import traceback
+    try:
+        repo_commits = await get_repos_with_recent_commits(since_days=since_days)
+        all_commits = [c for commits in repo_commits.values() for c in commits]
+        selected, gaps = await select_tests_for_commits(all_commits)
+        ranked = rank_tests(selected, all_commits)
+        return {
+            "total_tests": len(ranked),
+            "coverage_gaps": len(gaps),
+            "tests": ranked,
+            "gaps": gaps,
+        }
+    except Exception as exc:
+        tb = traceback.format_exc()
+        print(f"[/api/tests ERROR]\n{tb}")
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
 
 
 @router.get("/debug/ticket/{ticket_id}")
