@@ -8,7 +8,11 @@ export async function fetchTrace(sincedays) {
 
 export async function fetchTests(sinceDays) {
   const res = await fetch(`${BASE}/tests?since_days=${sinceDays}`)
-  if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`)
+  if (!res.ok) {
+    let msg = `API error ${res.status}`
+    try { const body = await res.json(); if (body.detail) msg = body.detail } catch (_) {}
+    throw new Error(msg)
+  }
   return res.json()
 }
 
