@@ -30,3 +30,9 @@ dist/
 # Logs
 *.log
 
+# Coverage TIA trial pipeline — SQLite index + raw .exec dumps + Maven build output
+backend/data/
+backend/tools/jacoco-report-helper/target/
+
+CLAUDE.md
+CLAUDE.md
