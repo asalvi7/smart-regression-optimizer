@@ -59,6 +59,14 @@ body { background: var(--bg); min-height: 100vh; }
   font-weight: 400;
   opacity: 0.65;
 }
+.app-header--single {
+  justify-content: center;
+}
+.app-header--single span {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.9;
+}
 
 /* ─── Page shell — full width ────────────────────────────── */
 .page {

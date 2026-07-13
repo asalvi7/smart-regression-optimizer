@@ -34,5 +34,18 @@ dist/
 backend/data/
 backend/tools/jacoco-report-helper/target/
 
+# Coverage TIA trial pipeline (Approach 2) — source files, kept out of Approach 1 pushes
+backend/app/api/routes/coverage.py
+backend/app/models/coverage_schemas.py
+backend/app/services/coverage/
+backend/tools/
+frontend/src/pages/CoverageDashboard.jsx
+frontend/src/components/CoverageComparison.jsx
+
+# Documentation — only the user_guide (Approach 1) gets pushed; everything else
+# (roadmap, sessions, decisions, architecture, setup, tooling) stays local-only
+documentation/*
+!documentation/user_guide
+
 CLAUDE.md
 CLAUDE.md

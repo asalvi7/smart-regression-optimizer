@@ -740,9 +740,8 @@ export default function Dashboard() {
 
   return (
     <>
-      <header className="app-header">
-        <h1>Smart Regression Optimizer</h1>
-        <span>Mediaocean — Pipeline Trace</span>
+      <header className="app-header app-header--single">
+        <span>Mediaocean — Pipeline Trace (Component-Based, Approach 1)</span>
       </header>
 
       <div className="page">

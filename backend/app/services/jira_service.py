@@ -1,39 +1,10 @@
 import httpx
 import base64
 import asyncio
-import json
-import os
 from app.core.config import get_settings
 from app.models.schemas import TestCase
 
 settings = get_settings()
-
-# Load slug → Jira component mapping (repo_component_mapping.json)
-_MAPPING_PATH = os.path.join(os.path.dirname(__file__), "../../config/repo_component_mapping.json")
-try:
-    with open(_MAPPING_PATH) as f:
-        _REPO_COMPONENT_MAP: dict = json.load(f)
-except Exception:
-    _REPO_COMPONENT_MAP = {}
-
-
-def slugs_to_jira_components(slugs: list[str]) -> list[str]:
-    """Map repo slugs from the Tag field to Jira component names for test search."""
-    components = []
-    seen = set()
-    for slug in slugs:
-        mapped = _REPO_COMPONENT_MAP.get(slug, {})
-        if mapped:
-            for comp_name in mapped.keys():
-                if comp_name not in seen:
-                    seen.add(comp_name)
-                    components.append(comp_name)
-        else:
-            # No mapping found — try the slug directly as a Jira component name
-            if slug not in seen:
-                seen.add(slug)
-                components.append(slug)
-    return components
 
 _token = base64.b64encode(
     f"{settings.jira_email}:{settings.jira_token}".encode()
@@ -186,7 +157,8 @@ _ticket_details_cache: dict[str, dict] = {}
 async def get_ticket_details(ticket_id: str) -> dict:
     """
     Fetch a feature ticket and return tag, repo slugs, and components.
-    Components are read directly from the ticket's `components` field — no mapping JSON.
+    Components are the repo slugs extracted from the Tag field, used directly
+    as Jira component names for test search — no mapping JSON.
     Returns: {tag: str, slugs: list[str], components: list[str]}
     """
     if ticket_id in _ticket_details_cache:
@@ -217,12 +189,11 @@ async def get_ticket_details(ticket_id: str) -> dict:
 
     tag_text = _extract_tag_text(fields.get("customfield_10313"))
     slugs = extract_repo_slugs_from_tag(tag_text)
-    components = slugs  # keep slugs for trace display
-    jira_components = slugs_to_jira_components(slugs)  # mapped Jira component names for test search
+    components = slugs  # repo slugs used directly as Jira component names
     sub_components = []
     priority_id = str(fields.get("priority", {}).get("id", "4"))  # "1"=Highest … "5"=Lowest
 
-    result = {"tag": tag_text, "slugs": slugs, "components": components, "jira_components": jira_components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
+    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
     _ticket_details_cache[ticket_id] = result
     _tag_text_cache[ticket_id] = tag_text
     _tag_cache[ticket_id] = slugs
