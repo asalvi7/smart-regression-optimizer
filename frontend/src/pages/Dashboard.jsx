@@ -6,6 +6,8 @@ import { fetchTrace, fetchCommitFiles, fetchCommitDiff, fetchTests } from '../ut
 const STATUS_BADGE = {
   matched:       { cls: 'badge-matched',    icon: '✓', label: 'Matched' },
   no_ticket:     { cls: 'badge-no-ticket',  icon: '—', label: 'No ticket' },
+  not_prisma:    { cls: 'badge-fallback',   icon: '⊘', label: 'Not Prisma' },
+  no_tag:        { cls: 'badge-no-tag',     icon: '⚠', label: 'No tag' },
   no_component:  { cls: 'badge-no-mapping', icon: '⚠', label: 'No component' },
   no_permission: { cls: 'badge-no-tag',     icon: '🔒', label: 'No permission' },
 }
@@ -43,46 +45,67 @@ function CommitCard({ trace, expanded, onToggle }) {
     ? <span className="muted">N/A — no ticket</span>
     : Object.entries(trace.ticket_tags).map(([ticket, tag]) => {
         const comps = trace.ticket_components[ticket] || []
+        const subComps = trace.ticket_sub_components?.[ticket] || []
+        const isPrisma = trace.ticket_is_prisma?.[ticket] ?? false
+        const ticketStatus = trace.ticket_status?.[ticket]
         return (
           <div key={ticket} style={{ marginBottom: 4 }}>
             <span className="ticket-tag">{ticket}</span>
             <div style={{ marginLeft: 8, marginTop: 2 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Product: </span>
+              {isPrisma
+                ? <span style={{ fontSize: 12 }}>Prisma</span>
+                : <span className="muted">Not Prisma — excluded from scope</span>}
+            </div>
+            <div style={{ marginLeft: 8, marginTop: 2 }}>
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Tag: </span>
-              {tag
-                ? <span style={{ fontSize: 12 }}>{tag}</span>
-                : trace.status === 'no_permission'
-                  ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied — check JIRA_TOKEN in .env</span>
-                  : <span className="muted">No tag field</span>}
+              {!isPrisma
+                ? <span className="muted">Skipped — Product ≠ Prisma</span>
+                : tag
+                  ? <span style={{ fontSize: 12 }}>{tag}</span>
+                  : ticketStatus === 'no_permission'
+                    ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied — check JIRA_TOKEN in .env</span>
+                    : <span className="muted">No tag field — excluded from scope</span>}
             </div>
             <div style={{ marginLeft: 8, marginTop: 2 }}>
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Component: </span>
-              {comps.length > 0
-                ? comps.map(c => <span key={c} className="component-tag">{c}</span>)
-                : <span className="muted">No component on ticket</span>}
+              {ticketStatus === 'not_prisma' || ticketStatus === 'no_tag'
+                ? <span className="muted">Not applicable</span>
+                : comps.length > 0
+                  ? comps.map(c => <span key={c} className="component-tag">{c}</span>)
+                  : <span className="muted">No component on ticket</span>}
             </div>
             <div style={{ marginLeft: 8, marginTop: 2 }}>
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Sub-Component: </span>
-              <span className="muted">Subcomponent Not Defined</span>
+              {ticketStatus === 'not_prisma' || ticketStatus === 'no_tag'
+                ? <span className="muted">Not applicable</span>
+                : subComps.length > 0
+                  ? subComps.map(sc => <span key={sc} className="component-tag">{sc}</span>)
+                  : <span className="muted">Not defined — component-level match only</span>}
             </div>
           </div>
         )
       })
 
-  const allComponents = Object.values(trace.ticket_components).flat()
+  const allComponents = [...new Set(
+    Object.entries(trace.ticket_status || {})
+      .filter(([, s]) => s === 'matched')
+      .flatMap(([t]) => trace.ticket_components[t] || [])
+  )]
   const step4Display = allComponents.length === 0
-    ? <span className="muted">Cannot search — no component found</span>
+    ? <span className="muted">Cannot search — no ticket in scope with a component</span>
     : (
       <span>
         Will search: {allComponents.map(c => <span key={c} className="component-tag">{c}</span>)}
         <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 6 }}>
-          + Selenium automated filter
+          + automated regression filter
         </span>
       </span>
     )
 
   const step2Status = trace.tickets.length > 0 ? 'ok' : 'warn'
   const step3Status = trace.tickets.length === 0 ? 'skip'
-    : Object.values(trace.ticket_components).some(v => v.length > 0) ? 'ok' : 'warn'
+    : Object.values(trace.ticket_status || {}).some(s => s === 'matched') ? 'ok' : 'warn'
   const step4Status = allComponents.length > 0 ? 'ok' : 'warn'
 
   return (
@@ -314,13 +337,13 @@ function TicketCommitRow({ trace }) {
   )
 }
 
-function TicketCard({ ticket }) {
-  const [open, setOpen] = useState(true)
+function TicketCard({ ticket, expanded, onToggle }) {
+  const open = expanded
   const repoCount = new Set(ticket.commits.map(c => c.repo)).size
 
   return (
     <div className="ticket-card">
-      <div className="ticket-card-header" onClick={() => setOpen(o => !o)}>
+      <div className="ticket-card-header" onClick={onToggle}>
         <span className="commit-toggle">{open ? '▾' : '▸'}</span>
         <span className="ticket-id">{ticket.id}</span>
         <div className="ticket-meta-chips">
@@ -339,43 +362,71 @@ function TicketCard({ ticket }) {
           {/* Ticket metadata */}
           <div className="ticket-details">
             <div className="ticket-detail-row">
+              <span className="td-label">Product</span>
+              <span className="td-value">
+                {ticket.isPrisma
+                  ? <span className="component-tag">Prisma</span>
+                  : <span className="muted">Not Prisma — ticket excluded from scope</span>
+                }
+              </span>
+            </div>
+            <div className="ticket-detail-row">
               <span className="td-label">Tag</span>
               <span className="td-value">
-                {ticket.tag
-                  ? <span className="tag-text">{ticket.tag}</span>
-                  : ticket.status === 'no_permission'
-                    ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied</span>
-                    : <span className="muted">No tag field on this ticket</span>
+                {!ticket.isPrisma
+                  ? <span className="muted">Skipped — Product ≠ Prisma</span>
+                  : ticket.tag
+                    ? <span className="tag-text">{ticket.tag}</span>
+                    : ticket.status === 'no_permission'
+                      ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied</span>
+                      : <span className="muted">No tag field — ticket excluded from scope</span>
                 }
               </span>
             </div>
             <div className="ticket-detail-row">
               <span className="td-label">Component</span>
               <span className="td-value">
-                {ticket.components.length > 0
-                  ? ticket.components.map(c => <span key={c} className="component-tag">{c}</span>)
-                  : <span className="muted">No component — cannot match tests</span>
+                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
+                  ? <span className="muted">Not applicable — ticket excluded above</span>
+                  : ticket.components.length > 0
+                    ? ticket.components.map(c => <span key={c} className="component-tag">{c}</span>)
+                    : <span className="muted">No component — cannot match tests</span>
                 }
               </span>
             </div>
             <div className="ticket-detail-row">
               <span className="td-label">Sub-Component</span>
-              <span className="td-value muted">Not Defined</span>
+              <span className="td-value">
+                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
+                  ? <span className="muted">Not applicable</span>
+                  : ticket.subComponents.length > 0
+                    ? ticket.subComponents.map(sc => <span key={sc} className="component-tag">{sc}</span>)
+                    : <span className="muted">Not defined — component-level match only</span>
+                }
+              </span>
             </div>
             <div className="ticket-detail-row">
               <span className="td-label">Test search</span>
               <span className="td-value">
-                {ticket.components.length > 0
-                  ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {ticket.components.map((c, i) => (
-                        <span key={c}>
-                          {i > 0 && <span style={{ margin: '0 4px', opacity: 0.5 }}>+</span>}
-                          JQL: <code>component = &quot;{c}&quot;</code>
-                        </span>
-                      ))}
-                      {' '}+ Selenium filter
-                    </span>
-                  : <span className="muted">Skipped — no component</span>
+                {ticket.status === 'not_prisma'
+                  ? <span className="muted">Skipped — Product ≠ Prisma</span>
+                  : ticket.status === 'no_tag'
+                    ? <span className="muted">Skipped — no Tag field</span>
+                    : ticket.components.length > 0
+                      ? <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>
+                          Looking for regression tests tagged{' '}
+                          {ticket.components.map((c, i) => (
+                            <span key={c}>
+                              {i > 0 && <> or </>}
+                              <strong>{c}</strong>
+                              {ticket.subComponents.length > 0 && (
+                                <> ({ticket.subComponents.join(' or ')})</>
+                              )}
+                            </span>
+                          ))}
+                          {' '}— automated, non-retired regression tests only.
+                        </div>
+                      : <span className="muted">Skipped — no component</span>
                 }
               </span>
             </div>
@@ -394,15 +445,15 @@ function TicketCard({ ticket }) {
   )
 }
 
-function NoTicketSection({ commits }) {
-  const [open, setOpen] = useState(false)
+function NoTicketSection({ commits, expanded, onToggle }) {
+  const open = expanded
   if (commits.length === 0) return null
 
   return (
     <div className="ticket-card" style={{ opacity: 0.8 }}>
-      <div className="ticket-card-header" onClick={() => setOpen(o => !o)}>
+      <div className="ticket-card-header" onClick={onToggle}>
         <span className="commit-toggle">{open ? '▾' : '▸'}</span>
-        <span className="ticket-id" style={{ color: 'var(--text-muted)' }}>No Jira Ticket</span>
+        <span className="ticket-id" style={{ color: 'var(--text-muted)' }}>Untracked Commits</span>
         <div className="ticket-meta-chips">
           <span className="meta-chip">{commits.length} commit{commits.length !== 1 ? 's' : ''}</span>
         </div>
@@ -427,14 +478,43 @@ function NoTicketSection({ commits }) {
   )
 }
 
+const NO_TICKET_KEY = '__no_ticket__'
+
+// Tickets that failed the Product=Prisma / has-Tag scope check are out of
+// scope for this tab entirely — they never reach test search, so they don't
+// belong on a tab meant to show "what's in scope". Full raw diagnostic
+// (including why a ticket was excluded) still lives in ticket_status via the
+// API if that's ever needed again.
+const OUT_OF_SCOPE_STATUSES = new Set(['not_prisma', 'no_tag'])
+
 function ByTicketView({ tickets, noTicketCommits }) {
-  const totalTickets = tickets.length
-  const matchedTickets = tickets.filter(t => t.status === 'matched').length
+  const inScopeTickets = useMemo(
+    () => tickets.filter(t => !OUT_OF_SCOPE_STATUSES.has(t.status)),
+    [tickets]
+  )
+  const excludedCount = tickets.length - inScopeTickets.length
+  const totalTickets = inScopeTickets.length
+  const matchedTickets = inScopeTickets.filter(t => t.status === 'matched').length
+  const [expandedIds, setExpandedIds] = useState(new Set())
+
+  const allIds = useMemo(() => {
+    const ids = inScopeTickets.map(t => t.id)
+    if (noTicketCommits.length > 0) ids.push(NO_TICKET_KEY)
+    return ids
+  }, [inScopeTickets, noTicketCommits])
+
+  function toggleTicket(id) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   return (
     <div>
       <div className="view-toolbar">
-        <span className="view-count">
+        <span className="view-count" style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)' }}>
           {totalTickets} unique ticket{totalTickets !== 1 ? 's' : ''}
           &nbsp;—&nbsp;
           <span style={{ color: 'var(--success)' }}>✓ {matchedTickets} matched</span>
@@ -446,47 +526,49 @@ function ByTicketView({ tickets, noTicketCommits }) {
             </span>
           )}
         </span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={() => setExpandedIds(new Set(allIds))}>Expand all</button>
+          <button className="btn-secondary" onClick={() => setExpandedIds(new Set())}>Collapse all</button>
+        </div>
       </div>
-      {tickets.map(ticket => (
-        <TicketCard key={ticket.id} ticket={ticket} />
+      {inScopeTickets.map(ticket => (
+        <TicketCard
+          key={ticket.id}
+          ticket={ticket}
+          expanded={expandedIds.has(ticket.id)}
+          onToggle={() => toggleTicket(ticket.id)}
+        />
       ))}
-      <NoTicketSection commits={noTicketCommits} />
+      <NoTicketSection
+        commits={noTicketCommits}
+        expanded={expandedIds.has(NO_TICKET_KEY)}
+        onToggle={() => toggleTicket(NO_TICKET_KEY)}
+      />
     </div>
   )
 }
 
 // ─── Recommended Tests view ──────────────────────────────────────────────────
 
-const PRIORITY_LABEL = { '1': 'Highest', '2': 'High', '3': 'Medium', '4': 'Low', '5': 'Lowest' }
-const PRIORITY_COLOR = { '1': '#dc2626', '2': '#ea580c', '3': '#ca8a04', '4': '#6b7280', '5': '#9ca3af' }
+// This Jira instance's priority scheme is custom, not the generic Jira default
+// (Highest/High/Medium/Low/Lowest) — confirmed via GET /rest/api/3/priority:
+// 1=Critical, 2=High, 3=Medium, 4=Low, 10000=TBD.
+const PRIORITY_LABEL = { '1': 'Critical', '2': 'High', '3': 'Medium', '4': 'Low', '10000': 'TBD' }
+const PRIORITY_COLOR = { '1': '#dc2626', '2': '#ea580c', '3': '#ca8a04', '4': '#6b7280', '10000': '#9ca3af' }
+// Severity rank for sorting — 0 = most severe (Critical) ... 4 = least (TBD)
+const PRIORITY_SEVERITY = { '1': 0, '2': 1, '3': 2, '4': 3, '10000': 4 }
 
 function PriorityBadge({ priorityId }) {
   const id = String(priorityId || '4')
   return (
     <span style={{
       background: PRIORITY_COLOR[id] ?? '#6b7280',
-      color: '#fff', borderRadius: 4,
-      fontSize: 10, fontWeight: 700, padding: '2px 6px',
+      color: '#fff', borderRadius: 5,
+      fontSize: 11.5, fontWeight: 700, padding: '4px 10px',
       letterSpacing: '0.04em', textTransform: 'uppercase',
+      display: 'inline-block',
     }}>
       {PRIORITY_LABEL[id] ?? 'Low'}
-    </span>
-  )
-}
-
-function ScorePill({ score }) {
-  const [bg, label] =
-    score >= 1.1 ? ['#dc2626', 'Critical'] :
-    score >= 0.8 ? ['#ea580c', 'High']     :
-    score >= 0.5 ? ['#ca8a04', 'Medium']   :
-                   ['#6b7280', 'Low']
-  return (
-    <span style={{
-      background: bg, color: '#fff', borderRadius: 4,
-      fontSize: 10, fontWeight: 700, padding: '2px 6px',
-      letterSpacing: '0.04em', textTransform: 'uppercase',
-    }}>
-      {label}
     </span>
   )
 }
@@ -495,8 +577,24 @@ const PAGE_SIZE = 20
 
 function RecommendedTestsView({ tests, loading, error }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  // null = default (backend) order; 'desc' = Critical → TBD; 'asc' = TBD → Critical
+  const [prioritySort, setPrioritySort] = useState(null)
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [tests])
+  useEffect(() => { setVisibleCount(PAGE_SIZE); setPrioritySort(null) }, [tests])
+
+  const sortedTests = useMemo(() => {
+    if (!tests || !prioritySort) return tests?.tests ?? []
+    const dir = prioritySort === 'desc' ? 1 : -1
+    return [...tests.tests].sort((a, b) => {
+      const ra = PRIORITY_SEVERITY[a.priority_id] ?? 5
+      const rb = PRIORITY_SEVERITY[b.priority_id] ?? 5
+      return dir * (ra - rb)
+    })
+  }, [tests, prioritySort])
+
+  function togglePrioritySort() {
+    setPrioritySort(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')
+  }
 
   if (loading) return (
     <div className="state-box">
@@ -522,105 +620,72 @@ function RecommendedTestsView({ tests, loading, error }) {
     </div>
   )
 
-  const uniqueComponents = [...new Set(tests.tests.map(t => t.component))].length
-
   return (
     <div style={{ marginTop: 16 }}>
-      {/* Summary strip */}
-      <div className="summary-strip" style={{ marginBottom: 16 }}>
-        <div className="summary-stat">
-          <div className="num">{tests.total_tests}</div>
-          <div className="lbl">Test cases</div>
-        </div>
-        <div className="summary-divider" />
-        <div className="summary-stat">
-          <div className="num">{uniqueComponents}</div>
-          <div className="lbl">Components</div>
-        </div>
-        <div className="summary-divider" />
-        <div className="summary-stat">
-          <div className="num" style={{ color: 'var(--error)' }}>{tests.coverage_gaps}</div>
-          <div className="lbl">Coverage gaps</div>
-        </div>
+      <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)', marginBottom: 14 }}>
+        {tests.total_tests} test case{tests.total_tests !== 1 ? 's' : ''} recommended
       </div>
 
       {/* Test list */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-        {/* Header row */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '48px 110px 1fr 130px 80px 80px 80px',
-          padding: '8px 16px',
-          background: 'var(--bg-secondary)',
-          borderBottom: '1px solid var(--border)',
-          fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-          letterSpacing: '0.05em', textTransform: 'uppercase',
-        }}>
+      <div className="tests-table">
+        <div className="tests-table-header">
           <span>#</span>
           <span>Jira ID</span>
           <span>Test Summary</span>
           <span>Component</span>
-          <span>Priority</span>
+          <span
+            onClick={togglePrioritySort}
+            style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+            title="Sort by priority"
+          >
+            Priority
+            <span style={{ fontSize: 10, opacity: prioritySort ? 1 : 0.35 }}>
+              {prioritySort === 'asc' ? '▲' : prioritySort === 'desc' ? '▼' : '▲▼'}
+            </span>
+          </span>
           <span>Frequency</span>
-          <span>Score</span>
         </div>
 
-        {tests.tests.slice(0, visibleCount).map((t, i) => (
-          <div key={t.jira_id} style={{
-            display: 'grid',
-            gridTemplateColumns: '48px 110px 1fr 130px 80px 80px 80px',
-            padding: '10px 16px',
-            borderBottom: '1px solid var(--border)',
-            alignItems: 'center',
-            background: i % 2 === 0 ? 'var(--bg)' : 'var(--bg-secondary)',
-            fontSize: 13,
-          }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</span>
+        {sortedTests.slice(0, visibleCount).map((t, i) => (
+          <div key={t.jira_id} className="tests-row">
+            <span className="tests-row-num">{i + 1}</span>
 
             <a
-              href={`https://jira.mediaocean.com/browse/${t.jira_id}`}
+              href={`https://mediaocean.atlassian.net/browse/${t.jira_id}`}
               target="_blank"
               rel="noreferrer"
-              style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12, fontFamily: 'monospace' }}
+              className="tests-row-jira"
             >
               {t.jira_id}
             </a>
 
-            <span style={{
-              fontSize: 12, color: 'var(--text)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              paddingRight: 16,
-            }}
-              title={t.summary}
-            >
+            <span className="tests-row-summary" title={t.summary}>
               {t.summary}
             </span>
 
-            <span>
-              <span className="component-tag" style={{ fontSize: 11 }}>{t.component}</span>
+            <span className="tests-row-component">
+              <span className="component-tag">{t.component}</span>
             </span>
 
             <span>
-              <PriorityBadge priorityId={t.ticket_priority_id} />
+              <PriorityBadge priorityId={t.priority_id} />
             </span>
 
-            <span style={{ fontSize: 11, color: t.frequency > 1 ? 'var(--accent)' : 'var(--text-muted)', fontWeight: t.frequency > 1 ? 700 : 400 }}>
+            <span className={`tests-row-frequency ${t.frequency > 1 ? 'tests-row-frequency--hot' : ''}`}>
               ×{t.frequency} {t.frequency > 1 ? 'tickets' : 'ticket'}
             </span>
-
-            <span><ScorePill score={t.impact_score} /></span>
           </div>
         ))}
       </div>
 
       {visibleCount < tests.tests.length && (
-        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <button
             onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
             style={{
-              padding: '8px 24px', borderRadius: 6, border: '1px solid var(--border)',
-              background: 'var(--bg-secondary)', color: 'var(--text)', cursor: 'pointer',
-              fontSize: 13, fontWeight: 600,
+              padding: '10px 28px', borderRadius: 7, border: '1px solid var(--border)',
+              background: 'var(--card)', color: 'var(--primary)', cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, boxShadow: 'var(--shadow-sm)',
             }}
           >
             Load more — {tests.tests.length - visibleCount} remaining
@@ -638,7 +703,7 @@ export default function Dashboard() {
   const [data, setData]         = useState(null)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
-  const [activeTab, setActiveTab] = useState('by-repo')
+  const [activeTab, setActiveTab] = useState('by-ticket')
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [tests, setTests]           = useState(null)
   const [testsLoading, setTestsLoading] = useState(false)
@@ -712,14 +777,13 @@ export default function Dashboard() {
       }
       for (const ticket of trace.tickets) {
         if (!map.has(ticket)) {
-          const tag        = trace.ticket_tags[ticket] || ''
-          const components = trace.ticket_components[ticket] || []
-          const slugs      = trace.ticket_slugs[ticket] || []
-          const permErr    = trace.status === 'no_permission'
-          const status     = components.length > 0 ? 'matched'
-                           : permErr ? 'no_permission'
-                           : 'no_component'
-          map.set(ticket, { id: ticket, tag, slugs, components, status, commits: [] })
+          const tag          = trace.ticket_tags[ticket] || ''
+          const components   = trace.ticket_components[ticket] || []
+          const subComponents = trace.ticket_sub_components?.[ticket] || []
+          const slugs        = trace.ticket_slugs[ticket] || []
+          const isPrisma     = trace.ticket_is_prisma?.[ticket] ?? false
+          const status       = trace.ticket_status?.[ticket] || 'no_component'
+          map.set(ticket, { id: ticket, tag, slugs, components, subComponents, isPrisma, status, commits: [] })
         }
         map.get(ticket).commits.push(trace)
       }
@@ -735,8 +799,15 @@ export default function Dashboard() {
     return { tickets: sorted, noTicketCommits: noTicket }
   }, [data])
 
-  const matched = data?.trace.filter(t => t.status === 'matched').length ?? 0
-  const gaps    = data?.trace.filter(t => t.status !== 'matched').length ?? 0
+  // Same in-scope filter as the By Ticket tab (Product=Prisma + has Tag) so the
+  // top KPI strip and the tab below it always agree on the same numbers.
+  const inScopeTickets = useMemo(
+    () => tickets.filter(t => !OUT_OF_SCOPE_STATUSES.has(t.status)),
+    [tickets]
+  )
+
+  const matched = inScopeTickets.filter(t => t.status === 'matched').length
+  const gaps    = inScopeTickets.length - matched
 
   return (
     <>
@@ -800,7 +871,7 @@ export default function Dashboard() {
               </div>
               <div className="summary-divider" />
               <div className="summary-stat">
-                <div className="num">{tickets.length}</div>
+                <div className="num">{inScopeTickets.length}</div>
                 <div className="lbl">Unique tickets</div>
               </div>
               <div className="summary-divider" />
@@ -808,36 +879,34 @@ export default function Dashboard() {
                 <div className="num" style={{ color: 'var(--success)' }}>{matched}</div>
                 <div className="lbl">Matched ✓</div>
               </div>
-              <div className="summary-divider" />
-              <div className="summary-stat">
-                <div className="num" style={{ color: 'var(--error)' }}>{gaps}</div>
-                <div className="lbl">Gaps ⚠</div>
-              </div>
             </div>
 
             {/* Tab bar */}
             <div className="tab-bar">
+              {/* By Repo tab hidden — only By Ticket / Recommended Tests should show.
               <button
                 className={`tab-btn ${activeTab === 'by-repo' ? 'active' : ''}`}
                 onClick={() => setActiveTab('by-repo')}
               >
                 📁 By Repo
               </button>
+              */}
               <button
                 className={`tab-btn ${activeTab === 'by-ticket' ? 'active' : ''}`}
                 onClick={() => setActiveTab('by-ticket')}
               >
-                🎫 By Ticket
+                🎫 DEV TICKETS
               </button>
               <button
                 className={`tab-btn ${activeTab === 'recommended' ? 'active' : ''}`}
                 onClick={() => { setActiveTab('recommended'); loadTests() }}
               >
-                🧪 Recommended Tests
+                🧪 RECOMMENDED TESTS
               </button>
             </div>
 
             {/* Tab content */}
+            {/* By Repo tab hidden — only By Ticket / Recommended Tests should show.
             {activeTab === 'by-repo' && (
               <ByRepoView
                 grouped={grouped}
@@ -847,6 +916,7 @@ export default function Dashboard() {
                 onCollapseAll={() => setExpandedIds(new Set())}
               />
             )}
+            */}
             {activeTab === 'by-ticket' && (
               <ByTicketView
                 tickets={tickets}
@@ -867,7 +937,7 @@ export default function Dashboard() {
         {!data && !loading && !error && (
           <div className="empty-hint">
             <div style={{ fontSize: 32 }}>🔍</div>
-            <p>Select a time window and click <strong>Run Pipeline</strong> to trace commits through the 4-step selection process.</p>
+            <p>Select a time window and click <strong>Run Pipeline</strong>.</p>
           </div>
         )}
       </div>

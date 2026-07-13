@@ -5,14 +5,19 @@
 ## Data flow, end to end
 
 ```
-Stash API → commits (filtered to those with ADINFRA-*/IAPP-* ticket IDs in the message)
-         → for each commit's ticket(s): fetch Jira ticket's "Tag" field
+Stash API → commits (filtered to those with ADINFRA-*/IAPP-* ticket IDs in the message,
+                       and to STASH_REPO_ALLOWLIST repos if that's set)
+         → for each commit's ticket(s): fetch the ticket's Product field (customfield_10169)
+         → keep only tickets where Product contains "Prisma" — everything else is dropped silently
+         → fetch the ticket's "Tag" field; if empty, drop silently (no Tag = no functional impact assumed)
          → extract repo slug(s) from the Tag field text
-         → use those slugs directly as Jira component names
-         → JQL search for Selenium-tagged test issues in those components
-         → ranker.py scores and sorts the resulting test cases
+         → resolve each slug to a (component, sub_component) pair via tag_component_mapping.json
+         → JQL search for eligible ST-Test Case issues matching those component/sub-component pairs
+         → ranker.py sorts the resulting test cases (frequency, then priority)
          → (background poller path only) stored as a RegressionEvent in event_store (in-memory, resets on restart)
 ```
+
+The Product/Tag filtering happens in that exact order — Product first (cheap, decisive), Tag second — and both exclusions are silent: no `CoverageGap` entry, no dashboard clutter. See `documentation/decisions/prisma-ingestion-scope.md` for the reasoning.
 
 ## Background poller (`app/core/scheduler.py`)
 
@@ -22,7 +27,7 @@ Stash API → commits (filtered to those with ADINFRA-*/IAPP-* ticket IDs in the
 
 ## Commit ingestion (`app/services/stash_service.py`)
 
-- `get_all_repos()` paginates through all repos in `STASH_PROJECT_KEY` via Stash's `/rest/api/1.0/projects/{key}/repos` endpoint.
+- `get_all_repos()` paginates through all repos in `STASH_PROJECT_KEY` via Stash's `/rest/api/1.0/projects/{key}/repos` endpoint, then filters the result to `STASH_REPO_ALLOWLIST` if that env var is set (comma-separated repo slugs). This filtering happens once at the source, so every downstream consumer — the poller, `/api/trace`'s `repos_scanned` count, `get_repos_with_recent_commits()` — automatically inherits the scoping.
 - `get_commits_since(repo_slug, since)` paginates a repo's commit history against `refs/heads/master`, stopping as soon as it hits a commit older than the `since` cutoff. Commits whose message starts with `[jenkins-release]` are filtered out.
 - `TICKET_PATTERN` is a regex (`\b(?:ADINFRA|IAPP)-\d+\b`) applied to each commit message to extract Jira ticket IDs; duplicates within a single commit message are deduped and uppercased.
 - `get_repos_with_recent_commits(since_days)` fans this out across all repos concurrently, capped at 10 concurrent Stash requests via an `asyncio.Semaphore`.
@@ -31,31 +36,20 @@ Stash API → commits (filtered to those with ADINFRA-*/IAPP-* ticket IDs in the
 
 ## Ticket resolution and test selection (`app/services/jira_service.py`, `app/services/selector.py`)
 
-This is the part most likely to differ from what you'd expect reading `repo_component_mapping.json` or older documentation:
+This is the part most likely to differ from what you'd expect reading older documentation:
 
-- `get_ticket_details(ticket_id)` fetches a Jira issue's `Tag` custom field (`customfield_10313`) and `priority`. It extracts repo slug(s) from the Tag field's free text (`extract_repo_slugs_from_tag`, a regex over patterns like `campaign-management:2026.5.80` or `campaign-management/2026.5.110`), then **uses those slugs directly as the Jira component names to search on** — there is no intermediate lookup into `repo_component_mapping.json`. That file exists in `backend/config/` but is currently dead weight; nothing in the code imports or reads it.
-- If the ticket's Tag field is empty or the ticket can't be read (403/404 → `no_permission`; 401 → `auth_failed`), `components` comes back empty and `selector.py` records a `CoverageGap` with reason `no_component_on_ticket`.
-- `search_tests_by_components(component_names)` builds one batched JQL query (`component in ("A", "B", ...)` + `SELENIUM_FILTER`) rather than one query per component, and caches results by the sorted tuple of component names for the life of the process (`_search_cache` — no TTL, cleared only on restart).
-- `SELENIUM_FILTER` is the JQL fragment that restricts results to automated Selenium tests: checks `cf[11133]`/`cf[10158]` (Automation Tool, migrated/old field IDs) and `cf[10159]` (Automated = "Yes"), and excludes TV/radio-only label categories.
-- Two functions, `layer1_traverse()` (walks `issuelinks` of type "Relates" to find IAPP suite parents) and `layer2_component_search()` (a per-component, non-batched JQL search), exist in `jira_service.py` but are **not called anywhere in the active selector path** — `selector.py` calls `get_ticket_details()` + `search_tests_by_components()` directly. Treat these two functions as unused/legacy unless you're the one wiring them back in.
+- `get_ticket_details(ticket_id)` fetches a Jira issue's `Tag` custom field (`customfield_10313`) and `Product` field (`customfield_10169`, multi-select). It returns `is_prisma: bool` (whether `"Prisma"` is among the Product values), and extracts repo slug(s) from the Tag field's free text (`extract_repo_slugs_from_tag`, a regex over patterns like `campaign-management:2026.5.80` or `campaign-management/2026.5.110`), then resolves each slug to a `(component, sub_component)` pair via `resolve_component_for_slug()`, which looks the slug up in `backend/config/tag_component_mapping.json`. Slugs not listed under that file's `tag_overrides` fall back to `default_component` (currently `"Global Invoices"`) with no sub-component filter.
+- **`selector.py` applies two silent scope checks, in order, before ever searching for tests**: (1) skip the ticket entirely if `is_prisma` is false, (2) skip the ticket entirely if it has no Tag (`slugs` is empty). Neither produces a `CoverageGap` — they're treated as out-of-scope noise, not pipeline failures. Only a ticket that's Product=Prisma *and* has a Tag proceeds to test search; if that search comes back empty, *that* does produce a `CoverageGap` (`no_test_cases_found`). See `documentation/decisions/prisma-ingestion-scope.md`.
+- `search_tests_by_tag_slugs(slugs)` resolves each slug to a component/sub-component clause — `(cf[10205] = "X" AND cf[10206] in ("Y", "Z"))`, or just `(cf[10205] = "X")` when there's no sub-component override — OR's the distinct clauses together, ANDs that against `TEST_CASE_FILTER`, and appends `ORDER BY "Latest date"`. Results are cached by the sorted tuple of clauses for the life of the process (`_search_cache` — no TTL, cleared only on restart). **`cf[10205]`/`cf[10206]`** ("Components - Prisma" / "Sub-Components - Prisma") are custom fields specific to this Jira instance, confirmed via `GET /rest/api/3/field` — this instance does *not* use Jira's system `component` field for Prisma work, and an earlier version of this code incorrectly queried the system field plus a nonexistent `cf[10100]`, which silently returned zero results. See `documentation/decisions/component-resolution-from-tag.md`.
+- `TEST_CASE_FILTER` is the JQL fragment that restricts results to eligible automated regression test cases: `(project = ADINFRA OR project = Prisma OR project = IAPP)`, `type = "ST-Test Case"`, a Regression flag, `Automated = Yes`, a non-empty test script ID (`cf[10225]`), and excludes issues marked `Retired` on any of the Automated dropdown variants.
+- Each matched test case also carries its **own** `priority_id`, read from the test case issue's `priority` field (not inherited from whichever dev ticket triggered it). This Jira instance's priority scheme is custom — confirmed via `GET /rest/api/3/priority`: `1=Critical, 2=High, 3=Medium, 4=Low, 10000=TBD` — not Jira's generic Highest/High/Medium/Low/Lowest default.
+- Two functions, `layer1_traverse()` (walks `issuelinks` of type "Relates" to find IAPP suite parents) and `layer2_component_search()` (a per-component, non-batched JQL search), exist in `jira_service.py` but are **not called anywhere in the active selector path** — `selector.py` calls `get_ticket_details()` + `search_tests_by_tag_slugs()` directly. Treat these two functions as unused/legacy unless you're the one wiring them back in.
 - `_JIRA_SEMAPHORE` and `_SEARCH_SEMAPHORE` each cap concurrency at 3 to avoid Jira 429 rate-limit responses; `_jql_search()` retries up to 3 times on 429, honoring the `Retry-After` header when present.
-- `selector.select_tests_for_commits()` dedupes by ticket ID before firing Jira lookups (avoiding redundant requests across commits that reference the same ticket), then aggregates per-test `frequency` (how many commits/tickets triggered it) and keeps the highest-severity (`ticket_priority_id`) seen for each test across all triggering tickets.
+- `selector.select_tests_for_commits()` dedupes by ticket ID before firing Jira lookups (avoiding redundant requests across commits that reference the same ticket), then aggregates per-test `frequency` (how many distinct tickets triggered it) across the whole run.
 
 ## Ranking (`app/services/ranker.py`)
 
-Every `TestCase` gets an `impact_score` computed as the sum of:
-
-| Component | Range | Basis |
-|---|---|---|
-| Base weight | 0.3 – 1.0 | Longest matching prefix of `sub_component` against a fixed table (`CM-`=1.0, `MP-`=0.9, …, `BI-`=0.4; unmatched defaults to 0.3) |
-| Layer bonus | 0 or +0.1 | +0.1 if `layer_found == 1` (currently never true in the active path, since layer 1 traversal isn't called) |
-| Overlap bonus | 0 or +0.1 | +0.1 if the test's sub-component prefix (before the first `-`) appears, case-insensitively, in the concatenated ticket IDs of the triggering commits |
-| Frequency bonus | 0 – +0.3 | +0.1 per additional commit beyond the first that triggered this test, capped at +0.3 |
-| Priority bonus | 0 – +0.3 | Based on `ticket_priority_id`: Highest=+0.3, High=+0.2, Medium=+0.1, Low/Lowest=+0.0 |
-
-Results are sorted descending by the final rounded score. Because `sub_component` is currently always empty (`search_tests_by_components` sets `sub_component=""` — see note below), every test case's base weight resolves to the 0.3 default unless that changes.
-
-> **Note**: `search_tests_by_components()` in `jira_service.py` does populate `sub_component` from `customfield_10100` when present on the matched Jira test issue — so the "always empty" case only applies if that custom field is genuinely unset on the test issue, not universally. Verify against real data in your Jira instance before assuming the base-weight table is inert.
+`rank_tests(tests)` sorts the deduplicated `TestCase` list by `(-frequency, priority severity)` — most-triggered first, ties broken by the test case's own priority (Critical → TBD). There is no computed score field; `TestCase` doesn't carry an `impact_score` at all. An earlier version of this pipeline computed a 4-factor weighted `impact_score` (a sub-component category base weight, a layer bonus, a commit-ID-overlap bonus, plus priority/frequency bonuses); two of those four factors were found to be inert against real data (see `documentation/decisions/test-case-ranking.md`), and the whole derived score was later dropped as redundant once Priority and Frequency were already shown as their own columns in the UI.
 
 ## Pipeline trace (`app/services/trace_service.py`)
 
@@ -65,7 +59,9 @@ Results are sorted descending by the final rounded score. Because `sub_component
 - `ticket_tags` — raw Tag field text per ticket
 - `ticket_slugs` — repo slugs extracted from that tag
 - `ticket_components` / `ticket_sub_components` — resolved component/sub-component names
-- `status` — one of `matched` (at least one ticket resolved to a component), `no_ticket` (no Jira ID in the commit message), `no_component` (ticket found, no usable Tag/component), `no_permission` (403/404/401 reading the ticket)
+- `ticket_is_prisma` — whether each ticket's Product field contains "Prisma"
+- `ticket_status` — **per-ticket** status, one of `matched`, `not_prisma`, `no_tag`, `no_component`, `no_permission` — mirrors the exact same Product→Tag→component check order as `selector.py`, so the trace never disagrees with what actually reaches Recommended Tests
+- `status` — the commit-level aggregate: `matched` if any ticket matched, otherwise the highest-priority reason among its tickets (`no_permission` > `not_prisma` > `no_tag` > `no_component`), or `no_ticket` if the commit referenced no Jira ID at all
 
 All ticket lookups are pre-fetched concurrently up front and then read from `jira_service`'s in-process cache while building each trace, so re-running the trace within the same process lifetime for overlapping commits doesn't re-hit Jira.
 
@@ -78,8 +74,9 @@ All active Approach 1 endpoints live in this single module (see `01-project-stru
 Single-file implementation of the entire Approach 1 UI:
 
 - **Filter bar**: a time-window `<select>` (7/14/30/60/90 days) and a **Run Pipeline** button that calls `fetchTrace(days)` (→ `GET /api/trace`).
-- **By Repo tab**: commits grouped by repo, each rendered as a collapsible card showing a 4-step pipeline trace (Repo → Ticket → Jira ticket/Tag/Component → Test search) with a status badge.
-- **By Ticket tab**: the same trace data regrouped by Jira ticket, with per-ticket metadata (tag, components, JQL used) and a drill-down per commit into changed files and their diffs (`fetchCommitFiles` / `fetchCommitDiff`, lazy-loaded on click).
-- **Recommended Tests tab**: lazily triggers `fetchTests(days)` (→ `GET /api/tests`) only the first time the tab is opened, then renders a paginated (20-at-a-time) table of ranked test cases with priority/frequency/impact-score badges.
+- **By Repo tab**: still implemented (commits grouped by repo, a 4-step pipeline trace per commit) but its tab button is commented out in `Dashboard.jsx` — currently hidden from the UI, not deleted.
+- **🎫 Dev Tickets tab** (internal state key `by-ticket`, labeled "DEV TICKETS" in the UI): trace data grouped by Jira ticket, **filtered to only tickets that passed both the Product=Prisma and has-Tag checks** (`ticket_status !== 'not_prisma' && !== 'no_tag'`) — a hidden-ticket count is shown in the toolbar for transparency. Each ticket card shows Product, Tag, Component, Sub-Component, and a plain-English "Test search" sentence (not raw JQL), plus a drill-down per commit into changed files and diffs (`fetchCommitFiles` / `fetchCommitDiff`, lazy-loaded on click). Ticket cards default to collapsed, with "Expand all"/"Collapse all" controls.
+- **🧪 Recommended Tests tab**: lazily triggers `fetchTests(days)` (→ `GET /api/tests`) only the first time the tab is opened, then renders a table of test cases sorted by frequency/priority: Jira ID (linked to the real Jira host), summary, component, priority badge (Critical/High/Medium/Low/TBD — click the header to sort), and frequency. No score column — that was removed. Paginated 20 at a time with a **Load more** button.
+- The top KPI strip shows Repos scanned / With changes / Commits / Unique tickets / Matched — all computed from the same in-scope (Product+Tag-filtered) ticket set the Dev Tickets tab uses, so the numbers agree across the dashboard. There is no "Gaps" tile in the strip anymore.
 
 There is no shared state between tabs beyond the single `data` (trace) and `tests` results — each is fetched independently and cached in component state for the session.

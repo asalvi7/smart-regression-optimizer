@@ -1,6 +1,8 @@
+import json
 import httpx
 import base64
 import asyncio
+from pathlib import Path
 from app.core.config import get_settings
 from app.models.schemas import TestCase
 
@@ -15,14 +17,52 @@ JIRA_HEADERS = {
     "Content-Type": "application/json",
 }
 
-# cf[11133]=Automation Tool (migrated), cf[10158]=Automation Tool (old), cf[10159]=Automated
-# Matches both migrated ADINFRA test cases and old IAPP test cases
-SELENIUM_FILTER = (
-    '(cf[11133] in ("Selenium", EMPTY) OR cf[10158] in ("Selenium", EMPTY))'
-    ' AND cf[10159] = "Yes"'
-    ' AND (labels not in (API, CrossMedia_LTV, CrossMedia_NTV, CrossMedia_Radio,'
-    ' LocalTV, NationalTV, Converged, TV_Mediaplan) OR labels is EMPTY)'
+# Base eligibility filter for any test-case search in this pipeline: must be an
+# automated, non-retired regression ST-Test Case with a linked test script (cf[10225]).
+TEST_CASE_FILTER = (
+    '(project = ADINFRA OR project = Prisma OR project = IAPP)'
+    ' AND type = "ST-Test Case"'
+    ' AND ("Regression Item" = Yes OR Regression = Yes)'
+    ' AND Automated = Yes'
+    ' AND cf[10225] is not EMPTY'
+    ' AND ("Automated (migrated)[Dropdown]" not in (Retired)'
+    ' OR "Automated[Dropdown]" not in (Retired)'
+    ' OR Automated not in (Retired))'
 )
+
+# This Jira instance doesn't use the system Components field for Prisma work —
+# it uses custom fields: cf[10205] "Components - Prisma" and cf[10206]
+# "Sub-Components - Prisma" (confirmed via GET /rest/api/3/field). Both are
+# single-select, unlike the system "components" field which is multi-value.
+COMPONENT_FIELD = "cf[10205]"
+SUB_COMPONENT_FIELD = "cf[10206]"
+
+_TAG_COMPONENT_MAPPING_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "tag_component_mapping.json"
+)
+
+
+def _load_tag_component_mapping() -> tuple[str, dict[str, dict]]:
+    """
+    Load the tag-slug → {component, sub_component} mapping. Edit
+    backend/config/tag_component_mapping.json to add new tags — no code
+    changes needed. Any tag slug not present in "tag_overrides" falls back to
+    "default_component" with no sub-component filter.
+    """
+    with open(_TAG_COMPONENT_MAPPING_PATH) as f:
+        data = json.load(f)
+    return data["default_component"], data.get("tag_overrides", {})
+
+
+_DEFAULT_COMPONENT, _TAG_OVERRIDES = _load_tag_component_mapping()
+
+
+def resolve_component_for_slug(slug: str) -> tuple[str, str | None]:
+    """Map a repo/tag slug to (component, sub_component | None) per tag_component_mapping.json."""
+    override = _TAG_OVERRIDES.get(slug)
+    if override:
+        return override["component"], override.get("sub_component")
+    return _DEFAULT_COMPONENT, None
 
 # Max concurrent requests to Jira to avoid 429 rate limiting
 _JIRA_SEMAPHORE = asyncio.Semaphore(3)
@@ -76,6 +116,23 @@ async def _jql_search(jql: str, fields: list[str]) -> list[dict]:
                 break
 
     return issues
+
+
+# customfield_10169 = Product (multi-select). Only tickets carrying "Prisma"
+# among their Product values are considered by the ingestion pipeline.
+PRODUCT_FIELD = "customfield_10169"
+PRODUCT_FILTER_VALUE = "Prisma"
+
+
+def _extract_product_values(customfield_10169) -> list[str]:
+    """Pull the selected value(s) out of the Product field — it's a multi-select, so a JSON array of options."""
+    if not customfield_10169:
+        return []
+    if isinstance(customfield_10169, list):
+        return [item.get("value", "") for item in customfield_10169 if isinstance(item, dict)]
+    if isinstance(customfield_10169, dict):
+        return [customfield_10169.get("value", "")]
+    return []
 
 
 def _extract_tag_text(customfield_10313) -> str:
@@ -156,10 +213,11 @@ _ticket_details_cache: dict[str, dict] = {}
 
 async def get_ticket_details(ticket_id: str) -> dict:
     """
-    Fetch a feature ticket and return tag, repo slugs, and components.
-    Components are the repo slugs extracted from the Tag field, used directly
-    as Jira component names for test search — no mapping JSON.
-    Returns: {tag: str, slugs: list[str], components: list[str]}
+    Fetch a feature ticket and return tag, repo slugs, components, and Product match.
+    Repo slugs extracted from the Tag field are resolved to Jira
+    component/sub-component names via tag_component_mapping.json
+    (see resolve_component_for_slug).
+    Returns: {tag: str, slugs: list[str], components: list[str], sub_components: list[str], is_prisma: bool}
     """
     if ticket_id in _ticket_details_cache:
         return _ticket_details_cache[ticket_id]
@@ -171,15 +229,15 @@ async def get_ticket_details(ticket_id: str) -> dict:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
                 f"{settings.jira_base_url}/rest/api/3/issue/{ticket_id}"
-                "?fields=customfield_10313,priority",
+                f"?fields=customfield_10313,{PRODUCT_FIELD}",
                 headers=JIRA_HEADERS,
             )
             if resp.status_code == 401:
-                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "priority_id": "4", "error": "auth_failed"}
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "is_prisma": False, "error": "auth_failed"}
                 _ticket_details_cache[ticket_id] = result
                 return result
             if resp.status_code in (403, 404):
-                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "priority_id": "4", "error": "no_permission"}
+                result = {"tag": "", "slugs": [], "components": [], "sub_components": [], "is_prisma": False, "error": "no_permission"}
                 _ticket_details_cache[ticket_id] = result
                 _tag_text_cache[ticket_id] = ""
                 _tag_cache[ticket_id] = []
@@ -189,23 +247,45 @@ async def get_ticket_details(ticket_id: str) -> dict:
 
     tag_text = _extract_tag_text(fields.get("customfield_10313"))
     slugs = extract_repo_slugs_from_tag(tag_text)
-    components = slugs  # repo slugs used directly as Jira component names
-    sub_components = []
-    priority_id = str(fields.get("priority", {}).get("id", "4"))  # "1"=Highest … "5"=Lowest
 
-    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "priority_id": priority_id, "error": None}
+    resolved = [resolve_component_for_slug(slug) for slug in slugs]
+    components = sorted({component for component, _ in resolved})
+    sub_components = sorted({sc for _, sc in resolved if sc})
+
+    product_values = _extract_product_values(fields.get(PRODUCT_FIELD))
+    is_prisma = PRODUCT_FILTER_VALUE in product_values
+
+    result = {"tag": tag_text, "slugs": slugs, "components": components, "sub_components": sub_components, "is_prisma": is_prisma, "error": None}
     _ticket_details_cache[ticket_id] = result
     _tag_text_cache[ticket_id] = tag_text
     _tag_cache[ticket_id] = slugs
     return result
 
 
-async def search_tests_by_components(component_names: list[str]) -> list[TestCase]:
-    """Search test cases for a set of components — batched into one JQL query, result cached."""
-    if not component_names:
+def _build_component_clause(component: str, sub_component: str | None) -> str:
+    if sub_component:
+        return f'({COMPONENT_FIELD} = "{component}" AND {SUB_COMPONENT_FIELD} = "{sub_component}")'
+    return f'({COMPONENT_FIELD} = "{component}")'
+
+
+async def search_tests_by_tag_slugs(slugs: list[str]) -> list[TestCase]:
+    """
+    Search test cases for a ticket's tag slug(s), resolved to component/sub-component
+    pairs via tag_component_mapping.json — batched into one JQL query, result cached.
+    """
+    if not slugs:
         return []
 
-    cache_key = tuple(sorted(component_names))
+    clauses: list[str] = []
+    seen_clauses: set[str] = set()
+    for slug in slugs:
+        component, sub_component = resolve_component_for_slug(slug)
+        clause = _build_component_clause(component, sub_component)
+        if clause not in seen_clauses:
+            seen_clauses.add(clause)
+            clauses.append(clause)
+
+    cache_key = tuple(sorted(clauses))
     if cache_key in _search_cache:
         return _search_cache[cache_key]
 
@@ -214,25 +294,26 @@ async def search_tests_by_components(component_names: list[str]) -> list[TestCas
         if cache_key in _search_cache:
             return _search_cache[cache_key]
 
-        quoted = ", ".join(f'"{c}"' for c in component_names)
-        jql = f'component in ({quoted}) AND {SELENIUM_FILTER}'
-        issues = await _jql_search(jql, ["summary", "components", "customfield_10100"])
+        component_expr = " OR ".join(clauses)
+        jql = f'({component_expr}) AND {TEST_CASE_FILTER} ORDER BY "Latest date"'
+        issues = await _jql_search(jql, ["summary", "customfield_10205", "customfield_10206", "priority"])
 
-        component_set = set(component_names)
+        component_names = {c for c, _ in (resolve_component_for_slug(s) for s in slugs)}
         test_cases = []
         for issue in issues:
             fields = issue.get("fields", {})
-            sub_comp = fields.get("customfield_10100")
+            comp = fields.get("customfield_10205")
+            component = comp.get("value", "") if comp else next(iter(component_names))
+            sub_comp = fields.get("customfield_10206")
             sub_component = sub_comp.get("value", "") if sub_comp else ""
-            issue_comps = [c["name"] for c in fields.get("components", [])]
-            component = next((c for c in issue_comps if c in component_set), component_names[0])
+            priority_id = str(fields.get("priority", {}).get("id", "4")) if fields.get("priority") else "4"
             test_cases.append(TestCase(
                 jira_id=issue["key"],
                 summary=fields.get("summary", ""),
                 component=component,
                 sub_component=sub_component,
                 layer_found=2,
-                impact_score=0.0,
+                priority_id=priority_id,
             ))
 
         seen: set[str] = set()
@@ -271,18 +352,18 @@ async def layer1_traverse(ticket_id: str) -> list[TestCase]:
 
     test_cases = []
     for suite_id in suite_ids:
-        jql = f'parent = {suite_id} AND {SELENIUM_FILTER}'
-        issues = await _jql_search(jql, ["summary", "components", "customfield_10100"])
+        jql = f'parent = {suite_id} AND {TEST_CASE_FILTER}'
+        issues = await _jql_search(jql, ["summary", "customfield_10205", "customfield_10206"])
         for issue in issues:
             fields = issue.get("fields", {})
-            components = [c["name"] for c in fields.get("components", [])]
+            comp = fields.get("customfield_10205")
+            sub_comp = fields.get("customfield_10206")
             test_cases.append(TestCase(
                 jira_id=issue["key"],
                 summary=fields.get("summary", ""),
-                component=components[0] if components else "",
-                sub_component=fields.get("customfield_10100", {}).get("value", "") if fields.get("customfield_10100") else "",
+                component=comp.get("value", "") if comp else "",
+                sub_component=sub_comp.get("value", "") if sub_comp else "",
                 layer_found=1,
-                impact_score=0.0,
             ))
 
     return test_cases
@@ -292,8 +373,8 @@ async def layer2_component_search(components: dict[str, list[str]]) -> list[Test
     test_cases = []
 
     for component in components:
-        jql = f'component = "{component}" AND {SELENIUM_FILTER}'
-        issues = await _jql_search(jql, ["summary", "components"])
+        jql = f'{COMPONENT_FIELD} = "{component}" AND {TEST_CASE_FILTER}'
+        issues = await _jql_search(jql, ["summary", "customfield_10205"])
         for issue in issues:
             fields = issue.get("fields", {})
             test_cases.append(TestCase(
@@ -302,7 +383,6 @@ async def layer2_component_search(components: dict[str, list[str]]) -> list[Test
                     component=component,
                     sub_component="",
                     layer_found=2,
-                    impact_score=0.0,
                 ))
 
     seen = set()

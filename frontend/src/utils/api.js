@@ -29,3 +29,21 @@ export async function fetchCommitDiff(repo, commitId, filePath) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
+
+// Coverage-based (JaCoCo TIA) trial pipeline — parallel to the component-mapping
+// pipeline above, for side-by-side comparison. See app/services/coverage/.
+export async function fetchCoverageComparison(sinceDays) {
+  const res = await fetch(`${BASE}/coverage/compare?since_days=${sinceDays}`)
+  if (!res.ok) {
+    let msg = `API error ${res.status}`
+    try { const body = await res.json(); if (body.detail) msg = body.detail } catch (_) {}
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
+export async function fetchCoverageIndexStats() {
+  const res = await fetch(`${BASE}/coverage/index/stats`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}

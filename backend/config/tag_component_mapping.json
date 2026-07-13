@@ -1,0 +1,13 @@
+{
+  "default_component": "Global Invoices",
+  "tag_overrides": {
+    "global-invoice-service": {
+      "component": "Global Invoices",
+      "sub_component": "GBLINV-Add/Edit"
+    },
+    "global-invoice-matching-service": {
+      "component": "Global Invoices",
+      "sub_component": "GBLINV-Invoice_Matching"
+    }
+  }
+}

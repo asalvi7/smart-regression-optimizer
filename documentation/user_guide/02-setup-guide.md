@@ -44,6 +44,7 @@ cp .env.example .env
 | `STASH_BASE_URL` | Base URL of your Bitbucket Server instance | `https://stash.mediaocean.com` |
 | `STASH_TOKEN` | Bearer token for Stash REST API auth | `<personal access token>` |
 | `STASH_PROJECT_KEY` | Bitbucket project key containing the repos to scan | `SO` |
+| `STASH_REPO_ALLOWLIST` | Optional comma-separated repo slugs to scope scanning to; empty = scan every repo in `STASH_PROJECT_KEY` | `global-invoice,edi-invoice,...` |
 | `JIRA_BASE_URL` | Base URL of your Jira Cloud instance | `https://mediaocean.atlassian.net` |
 | `JIRA_EMAIL` | Email of the Jira account associated with the API token | `you@company.com` |
 | `JIRA_TOKEN` | Jira API token (Basic auth, paired with `JIRA_EMAIL`) | `<api token>` |
@@ -51,7 +52,7 @@ cp .env.example .env
 | `COMMIT_LOOKBACK_DAYS` | How far back the poller looks for new commits on its first run | `30` |
 | `FRONTEND_URL` | Origin allowed by CORS (must match where the frontend is served) | `http://localhost:5173` |
 
-**Important**: the values in `.env.example` and in this table are illustrative placeholders (`stash.example.com`, `CM`, etc.), not literal values. Use your organization's real base URLs and the actual Bitbucket project key that contains your repos — using the wrong project key means the poller will scan zero or the wrong repos.
+**Important**: the values in `.env.example` and in this table are illustrative placeholders (`stash.example.com`, `<Your STASH_PROJECT_KEY>`, etc.), not literal values. Use your organization's real base URLs and the actual Bitbucket project key that contains your repos — using the wrong project key means the poller will scan zero or the wrong repos.
 
 **Where to get the tokens:**
 - **`STASH_TOKEN`**: log in to Stash → your avatar (top right) → Manage Account → Personal Access Tokens → Create token. Give it read access to repositories.

@@ -18,9 +18,8 @@ class TestCase(BaseModel):
     component: str
     sub_component: str
     layer_found: int
-    impact_score: float
     frequency: int = 1          # how many commits triggered this test case
-    ticket_priority_id: str = "4"  # best (lowest id) priority among triggering tickets
+    priority_id: str = "4"      # the test case issue's own Jira priority
 
 
 class CoverageGap(BaseModel):
@@ -51,7 +50,9 @@ class CommitTrace(BaseModel):
     ticket_slugs: dict[str, list[str]]      # ticket -> repo slugs from tag
     ticket_components: dict[str, list[str]]     # ticket -> component names (customfield_10205)
     ticket_sub_components: dict[str, list[str]] # ticket -> sub-component names (customfield_10206)
-    status: str  # matched | no_ticket | no_component | no_permission
+    ticket_is_prisma: dict[str, bool]           # ticket -> Product field contains "Prisma" (customfield_10169)
+    ticket_status: dict[str, str]               # ticket -> matched | not_prisma | no_tag | no_component | no_permission
+    status: str  # matched | no_ticket | not_prisma | no_tag | no_component | no_permission
 
 
 class PipelineTraceResponse(BaseModel):

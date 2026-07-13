@@ -1,6 +1,6 @@
 import asyncio
 from app.models.schemas import Commit, TestCase, CoverageGap
-from app.services.jira_service import get_ticket_details, search_tests_by_components
+from app.services.jira_service import get_ticket_details, search_tests_by_tag_slugs
 
 
 async def select_tests_for_commit(commit: Commit) -> tuple[list[TestCase], list[CoverageGap]]:
@@ -16,28 +16,22 @@ async def select_tests_for_commit(commit: Commit) -> tuple[list[TestCase], list[
         ))
         return all_tests, gaps
 
-    # Track best (lowest id = highest severity) priority per test within this commit
-    best_priority: dict[str, str] = {}
-
     for ticket in commit.jira_tickets:
         details = await get_ticket_details(ticket)
-        components = details["components"]
-        priority_id = details.get("priority_id", "4")
 
-        if not components:
-            gaps.append(CoverageGap(
-                repo=commit.repo,
-                commit_id=commit.id,
-                jira_tickets=[ticket],
-                reason="no_component_on_ticket",
-            ))
+        # Only Product = Prisma tickets are in scope; tickets that don't match (or
+        # couldn't be read) are silently excluded — not shown as a gap.
+        if not details.get("is_prisma"):
             continue
 
-        tests = await search_tests_by_components(components)
-        for t in tests:
-            # Keep the highest severity (lowest id number) seen for this test
-            if t.jira_id not in best_priority or int(priority_id) < int(best_priority[t.jira_id]):
-                best_priority[t.jira_id] = priority_id
+        slugs = details["slugs"]
+
+        # No Tag field means this is likely a dev-only ticket with no functional
+        # impact to trace to test cases — silently excluded, not shown as a gap.
+        if not slugs:
+            continue
+
+        tests = await search_tests_by_tag_slugs(slugs)
         all_tests.extend(tests)
 
         if not tests:
@@ -53,7 +47,6 @@ async def select_tests_for_commit(commit: Commit) -> tuple[list[TestCase], list[
     for t in all_tests:
         if t.jira_id not in seen:
             seen.add(t.jira_id)
-            t.ticket_priority_id = best_priority.get(t.jira_id, "4")
             unique.append(t)
 
     return unique, gaps
@@ -74,20 +67,17 @@ async def select_tests_for_commits(commits: list[Commit]) -> tuple[list[TestCase
 
     results = await asyncio.gather(*[select_tests_for_commit(c) for c in deduped])
 
-    # Aggregate frequency and best priority across all commit results
+    # Aggregate frequency (how many distinct tickets triggered each test case)
     frequency_map: dict[str, int] = {}
-    best_priority_map: dict[str, str] = {}
     all_gaps: list[CoverageGap] = []
 
     for tests, gaps in results:
         for t in tests:
             frequency_map[t.jira_id] = frequency_map.get(t.jira_id, 0) + 1
-            pid = t.ticket_priority_id
-            if t.jira_id not in best_priority_map or int(pid) < int(best_priority_map[t.jira_id]):
-                best_priority_map[t.jira_id] = pid
         all_gaps.extend(gaps)
 
-    # Global dedup — stamp frequency + best priority on first occurrence
+    # Global dedup — stamp frequency on first occurrence; priority_id already
+    # comes from the test case's own Jira priority (set in jira_service.py)
     seen: set[str] = set()
     all_tests: list[TestCase] = []
     for tests, _ in results:
@@ -95,7 +85,6 @@ async def select_tests_for_commits(commits: list[Commit]) -> tuple[list[TestCase
             if t.jira_id not in seen:
                 seen.add(t.jira_id)
                 t.frequency = frequency_map[t.jira_id]
-                t.ticket_priority_id = best_priority_map.get(t.jira_id, "4")
                 all_tests.append(t)
 
     return all_tests, all_gaps

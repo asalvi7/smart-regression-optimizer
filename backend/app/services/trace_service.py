@@ -34,29 +34,43 @@ async def build_pipeline_trace(since_days: int) -> PipelineTraceResponse:
                 ticket_slugs={},
                 ticket_components={},
                 ticket_sub_components={},
+                ticket_is_prisma={},
+                ticket_status={},
                 status="pending",
             )
 
             if not commit.jira_tickets:
                 trace.status = "no_ticket"
             else:
-                has_permission_error = False
+                # Ingestion scope, in order: Product = Prisma → has Tag → resolves to a component.
+                # Mirrors selector.py's filtering exactly, so this trace reflects what actually
+                # reaches the Recommended Tests tab.
+                STATUS_PRIORITY = ["no_permission", "not_prisma", "no_tag", "no_component", "matched"]
                 for ticket in commit.jira_tickets:
                     details = await get_ticket_details(ticket)  # cache hit
                     trace.ticket_tags[ticket] = details["tag"]
                     trace.ticket_slugs[ticket] = details["slugs"]
                     trace.ticket_components[ticket] = details["components"]
                     trace.ticket_sub_components[ticket] = details.get("sub_components", [])
-                    if details.get("error") in ("no_permission", "auth_failed"):
-                        has_permission_error = True
+                    trace.ticket_is_prisma[ticket] = details.get("is_prisma", False)
 
-                has_components = any(bool(v) for v in trace.ticket_components.values())
-                if has_components:
-                    trace.status = "matched"
-                elif has_permission_error:
-                    trace.status = "no_permission"
-                else:
-                    trace.status = "no_component"
+                    if details.get("error") in ("no_permission", "auth_failed"):
+                        ticket_status = "no_permission"
+                    elif not details.get("is_prisma"):
+                        ticket_status = "not_prisma"
+                    elif not details["slugs"]:
+                        ticket_status = "no_tag"
+                    elif details["components"]:
+                        ticket_status = "matched"
+                    else:
+                        ticket_status = "no_component"
+                    trace.ticket_status[ticket] = ticket_status
+
+                # Commit-level status: matched if any ticket matched, else the
+                # highest-priority reason among the rest.
+                statuses = set(trace.ticket_status.values())
+                trace.status = "matched" if "matched" in statuses else \
+                    next(s for s in STATUS_PRIORITY if s in statuses)
 
             traces.append(trace)
 

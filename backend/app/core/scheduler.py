@@ -37,7 +37,7 @@ async def run_poll():
     print(f"[poller] Found {len(new_commits)} new commits across {len(repos_changed)} repos")
 
     selected_tests, gaps = await select_tests_for_commits(new_commits)
-    ranked_tests = rank_tests(selected_tests, new_commits)
+    ranked_tests = rank_tests(selected_tests)
 
     event = RegressionEvent(
         id=str(uuid.uuid4()),

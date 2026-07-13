@@ -32,12 +32,12 @@ backend/
 │       ├── ranker.py                  Impact-score computation and sorting
 │       └── trace_service.py           Per-commit diagnostic trace (drives /api/trace)
 ├── config/
-│   └── repo_component_mapping.json    Repo slug → Jira component/sub-component map (see note below)
+│   └── tag_component_mapping.json     Tag slug → {component, sub_component} map (see note below)
 ├── requirements.txt
 └── .env.example                       Checked-in, credential-free reference for required env vars
 ```
 
-> **Note on `repo_component_mapping.json`**: this file exists on disk but is **not currently referenced anywhere in the active code path**. The live pipeline (`jira_service.get_ticket_details`) uses the Jira ticket's `Tag` custom field's repo slug directly as the Jira component name — no JSON lookup step. Treat this file as legacy/reference data unless it's re-wired in; don't assume editing it changes pipeline behavior today.
+> **Note on `tag_component_mapping.json`**: this is the live mapping used by `jira_service.resolve_component_for_slug()`. Each repo slug extracted from a ticket's `Tag` field is looked up under `tag_overrides`; slugs not listed there fall back to `default_component` (currently `"Global Invoices"`) with no sub-component filter. Add new tag overrides here — no code changes needed. The old `repo_component_mapping.json` (never wired into the code) has been deleted.
 
 Two route modules (`app/api/routes/commits.py`, `events.py`, `tests.py`) and three frontend components (`CommitTable.jsx`, `EventsFeed.jsx`, `TestRecommendations.jsx`) exist as empty (0-line) files — dead scaffolding from an earlier intended module split that was never followed through. All real endpoint logic lives in `api.py`; all real UI logic lives inline in `Dashboard.jsx`.
 
@@ -50,7 +50,7 @@ frontend/
 │   ├── App.jsx               Top nav shell — toggles between Approach 1 and Approach 2 views
 │   ├── App.css                Shared styles/CSS custom properties (--primary, --border, etc.)
 │   ├── pages/
-│   │   └── Dashboard.jsx      The entire Approach 1 UI: filter bar, 3 tabs, all view components inline
+│   │   └── Dashboard.jsx      The entire Approach 1 UI: filter bar, tabs, all view components inline
 │   └── utils/
 │       └── api.js             fetch() wrappers for backend endpoints
 ├── package.json

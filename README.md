@@ -1,13 +1,13 @@
 # Smart Regression Optimizer
 
-A proof-of-concept for Mediaocean that intelligently selects regression test cases when code changes are detected. It polls Bitbucket Server (Stash) for new commits, extracts Jira ticket IDs from commit messages, and recommends relevant automated Selenium test cases via Jira — so QA can run a smaller, targeted regression set instead of the full suite after every change.
+A proof-of-concept for Mediaocean that intelligently selects regression test cases when code changes are detected. It polls Bitbucket Server (Stash) for new commits, extracts Jira ticket IDs from commit messages, and recommends relevant automated regression test cases via Jira — so QA can run a smaller, targeted regression set instead of the full suite after every change.
 
 ## How it works
 
 ```
-Stash commits → Jira ticket (from commit message) → ticket's "Tag" field
-             → repo slug → Jira component → JQL search for Selenium tests
-             → impact-scored, ranked test recommendations
+Stash commits → Jira ticket (from commit message) → ticket's "Product" field (Prisma only)
+             → ticket's "Tag" field → repo slug → Jira component/sub-component
+             → JQL search for automated regression tests → ranked by priority + frequency
 ```
 
 A background poller re-scans on a configurable interval and keeps a rolling history of results; a React dashboard lets you run the pipeline on demand, trace exactly how each commit resolved (or didn't), and drill into files/diffs.
@@ -38,6 +38,7 @@ Full documentation lives under [`documentation/user_guide/`](documentation/user_
 | [02-setup-guide.md](documentation/user_guide/02-setup-guide.md) | Installation, environment configuration, verifying the pipeline works |
 | [03-implementation-details.md](documentation/user_guide/03-implementation-details.md) | How ticket resolution, ranking, and tracing actually work in code |
 | [04-user-manual.md](documentation/user_guide/04-user-manual.md) | How to use the dashboard, interpret results, and troubleshoot |
+| [05-docker-deployment.md](documentation/user_guide/05-docker-deployment.md) | Docker/single-VM deployment |
 
 See `CLAUDE.md` for guidance oriented at AI coding assistants working in this repo.
 

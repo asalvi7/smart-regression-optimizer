@@ -50,7 +50,7 @@ async def get_test_recommendations(since_days: int = Query(default=7, ge=1, le=9
         repo_commits = await get_repos_with_recent_commits(since_days=since_days)
         all_commits = [c for commits in repo_commits.values() for c in commits]
         selected, gaps = await select_tests_for_commits(all_commits)
-        ranked = rank_tests(selected, all_commits)
+        ranked = rank_tests(selected)
         return {
             "total_tests": len(ranked),
             "coverage_gaps": len(gaps),

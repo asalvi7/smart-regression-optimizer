@@ -15,8 +15,16 @@ STASH_HEADERS = {
     "Content-Type": "application/json",
 }
 
+_REPO_ALLOWLIST = {s.strip() for s in settings.stash_repo_allowlist.split(",") if s.strip()} or None
+
 
 async def get_all_repos() -> list[dict]:
+    """
+    List repos in stash_project_key, filtered to STASH_REPO_ALLOWLIST if set
+    (see app/core/config.py). All downstream scanning (get_repos_with_recent_commits,
+    the /api/trace repos_scanned count) goes through this, so setting the
+    allowlist scopes the whole pipeline to just those repos.
+    """
     repos = []
     start = 0
     limit = 100
@@ -35,6 +43,9 @@ async def get_all_repos() -> list[dict]:
             if data.get("isLastPage", True):
                 break
             start += limit
+
+    if _REPO_ALLOWLIST is not None:
+        repos = [r for r in repos if r["slug"] in _REPO_ALLOWLIST]
 
     return repos
 
@@ -219,6 +230,27 @@ async def get_commit_diff(repo_slug: str, commit_id: str, file_path: str) -> dic
         "truncated": truncated or total_lines > 3000,
         "stash_url": stash_url,
     }
+
+
+async def get_file_content_at_commit(repo_slug: str, commit_id: str, file_path: str) -> str:
+    """Fetch a file's full raw content at a given commit revision.
+
+    Used by the coverage/diff_parser.py trial pipeline to resolve changed line
+    numbers to enclosing Java methods/classes — the existing get_commit_diff()
+    only returns line-level hunks, not full file content, so this is additive
+    rather than a replacement for anything the component-mapping pipeline uses.
+    """
+    from urllib.parse import quote
+    encoded = quote(file_path, safe="/")
+    url = (
+        f"{_BASE}/rest/api/1.0/projects/{settings.stash_project_key}"
+        f"/repos/{repo_slug}/raw/{encoded}?at={commit_id}"
+    )
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url, headers=STASH_HEADERS)
+        if resp.status_code != 200:
+            return ""
+        return resp.text
 
 
 async def get_repos_with_recent_commits(since_days: int = 30) -> dict[str, list[Commit]]:
