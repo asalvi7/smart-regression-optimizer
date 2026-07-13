@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# Coverage/JaCoCo TIA trial pipeline UI — not part of Approach 1
+src/pages/CoverageDashboard.jsx
+src/components/CoverageComparison.jsx

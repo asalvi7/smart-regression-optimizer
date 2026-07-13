@@ -1,0 +1,15 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.local
+data/
+tools/
+
+# Coverage/JaCoCo TIA trial pipeline — kept out even if present locally,
+# since it's not part of what's tracked/pushed for Approach 1.
+app/api/routes/coverage.py
+app/models/coverage_schemas.py
+app/services/coverage/
