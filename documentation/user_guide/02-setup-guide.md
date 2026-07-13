@@ -17,7 +17,15 @@ There are no automated tests and no linting configuration in this repo (backend 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+```
+
+Activate the virtual environment — you'll need to do this again every time you open a new terminal to work on the backend (your prompt will show `(venv)` once it's active):
+
+- **Mac / Linux**: `source venv/bin/activate`
+- **Windows (Command Prompt)**: `venv\Scripts\activate.bat`
+- **Windows (PowerShell)**: `venv\Scripts\Activate.ps1`
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -44,6 +52,10 @@ cp .env.example .env
 | `FRONTEND_URL` | Origin allowed by CORS (must match where the frontend is served) | `http://localhost:5173` |
 
 **Important**: the values in `.env.example` and in this table are illustrative placeholders (`stash.example.com`, `CM`, etc.), not literal values. Use your organization's real base URLs and the actual Bitbucket project key that contains your repos — using the wrong project key means the poller will scan zero or the wrong repos.
+
+**Where to get the tokens:**
+- **`STASH_TOKEN`**: log in to Stash → your avatar (top right) → Manage Account → Personal Access Tokens → Create token. Give it read access to repositories.
+- **`JIRA_TOKEN`**: log in to Jira → your avatar → Profile → Personal Access Tokens → Create token. Needs read access to the tickets/components this pipeline will query.
 
 `pydantic-settings` reads `.env` once at process startup (cached via `@lru_cache` on `get_settings()`). If you edit `.env` while the backend is running, **restart the process** — there is no hot-reload of configuration (only of code, via `--reload`).
 
@@ -92,3 +104,30 @@ npm run preview    # serve the production build locally to sanity-check it
 4. Click the **Recommended Tests** tab. This triggers `/api/tests`, which runs the full selector + ranker and queries Jira for actual Selenium test cases — expect this to take 30–60 seconds on a cold cache, since it fans out real Jira JQL searches.
 
 If step 3 returns commits but every one shows `no_component` or `no_permission`, check the `JIRA_TOKEN`/`JIRA_EMAIL` pair and confirm that account has read access to the tickets being referenced — this pipeline depends entirely on being able to read each commit's linked Jira ticket.
+
+## Stopping the app / freeing stuck ports
+
+In each terminal, `Ctrl + C` stops the server. If a port is still reported as in use the next time you try to start it:
+
+```bash
+lsof -ti :8000 | xargs kill -9   # backend
+lsof -ti :5173 | xargs kill -9   # frontend
+```
+
+## Quick-reference checklist (first-time setup)
+
+| Step | What | Command |
+|---|---|---|
+| 1 | Clone the repo | `git clone <repo-url> && cd smart-regression-optimizer` |
+| 2 | Go into backend folder | `cd backend` |
+| 3 | Create virtual environment | `python -m venv venv` |
+| 4 | Activate virtual environment | `source venv/bin/activate` (see OS variants above) |
+| 5 | Install Python packages | `pip install -r requirements.txt` |
+| 6 | Create `.env` file | `cp .env.example .env` → fill in real credentials |
+| 7 | Go into frontend folder | `cd ../frontend` |
+| 8 | Install Node packages | `npm install` |
+| 9 | Start backend (Terminal 1) | `cd backend && source venv/bin/activate && uvicorn app.main:app --reload --port 8000` |
+| 10 | Start frontend (Terminal 2) | `cd frontend && npm run dev` |
+| 11 | Open the app | `http://localhost:5173` |
+
+Once set up, day-to-day startup is just steps 9–11.
