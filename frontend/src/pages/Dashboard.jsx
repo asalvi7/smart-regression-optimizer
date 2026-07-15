@@ -762,17 +762,28 @@ function commitsByDay(trace) {
 }
 
 function RepoActivityCard({ scanned, changed }) {
-  const dots = Array.from({ length: scanned }, (_, i) => i < changed)
+  const pct = scanned > 0 ? Math.round((changed / scanned) * 100) : 0
+  const ringStyle = {
+    background: `conic-gradient(var(--warning) ${pct * 3.6}deg, var(--neutral-bg) ${pct * 3.6}deg)`,
+  }
   return (
     <div className="stat-card">
       <div className="stat-card-label">Repo Activity</div>
-      <div className="stat-card-num">
-        {changed} <span className="stat-card-num-sub">of {scanned} repos changed</span>
-      </div>
-      <div className="repo-dots">
-        {dots.map((active, i) => (
-          <span key={i} className={`repo-dot ${active ? 'repo-dot--active' : ''}`} />
-        ))}
+      <div className="donut-row">
+        <div className="donut-ring" style={ringStyle}>
+          <div className="donut-center">
+            <div className="donut-pct" style={{ fontSize: 14 }}>{changed}/{scanned}</div>
+            <div className="donut-pct-lbl">changed</div>
+          </div>
+        </div>
+        <div className="donut-legend">
+          <div className="donut-legend-row">
+            <span className="donut-dot" style={{ background: 'var(--warning)' }} /> {changed} changed
+          </div>
+          <div className="donut-legend-row">
+            <span className="donut-dot donut-dot--gap" /> {scanned - changed} unchanged
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -828,12 +839,13 @@ function CoverageDonutCard({ matched, gaps }) {
 }
 
 function CommitsPerRepoCard({ repoCounts }) {
-  const max = Math.max(1, ...repoCounts.map(r => r.count))
+  const top3 = repoCounts.slice(0, 3)
+  const max = Math.max(1, ...top3.map(r => r.count))
   return (
     <div className="stat-card">
-      <div className="stat-card-label">Commits per Repo</div>
+      <div className="stat-card-label">Top 3 Repos by Commits</div>
       <div className="repo-bar-list">
-        {repoCounts.map(r => (
+        {top3.map(r => (
           <div key={r.repo} className="repo-bar-row">
             <div className="repo-bar-head">
               <span className="repo-bar-name">{r.repo}</span>
