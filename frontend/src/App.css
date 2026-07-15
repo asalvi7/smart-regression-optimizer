@@ -180,6 +180,8 @@ body { background: var(--bg); min-height: 100vh; zoom: 1.12; }
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
   padding: 18px 20px;
+  min-width: 0;
+  overflow: hidden;
 }
 .stat-card--dark {
   background: var(--primary);
@@ -211,7 +213,7 @@ body { background: var(--bg); min-height: 100vh; zoom: 1.12; }
 }
 
 /* Repo activity dots */
-.repo-dots { display: flex; gap: 6px; margin-top: 14px; }
+.repo-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .repo-dot { width: 14px; height: 8px; border-radius: 4px; background: var(--border); }
 .repo-dot--active { background: var(--warning); }
 
