@@ -8,6 +8,7 @@ from app.services.selector import select_tests_for_commits
 from app.services.ranker import rank_tests
 from app.services.trace_service import build_pipeline_trace
 from app.models.schemas import CommitScanResponse, TestCase, CoverageGap, PipelineTraceResponse
+from app.core import scheduler
 from app.core.scheduler import event_store, run_poll
 
 router = APIRouter()
@@ -95,6 +96,16 @@ async def debug_ticket(ticket_id: str):
 @router.get("/trace", response_model=PipelineTraceResponse)
 async def get_pipeline_trace(since_days: int = Query(default=7, ge=1, le=90)):
     return await build_pipeline_trace(since_days=since_days)
+
+
+@router.get("/trace/latest")
+async def get_latest_cached_trace():
+    """Serve the poller's warm trace cache (dashboard default window) so the
+    frontend can render instantly on load instead of running a live scan."""
+    return {
+        "trace": scheduler.cached_trace,
+        "cached_at": scheduler.cached_trace_at,
+    }
 
 
 @router.get("/commits/{repo}/{commit_id}/files")

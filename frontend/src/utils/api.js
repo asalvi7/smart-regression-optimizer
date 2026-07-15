@@ -6,6 +6,12 @@ export async function fetchTrace(sincedays) {
   return res.json()
 }
 
+export async function fetchLatestTrace() {
+  const res = await fetch(`${BASE}/trace/latest`)
+  if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`)
+  return res.json()
+}
+
 export async function fetchTests(sinceDays) {
   const res = await fetch(`${BASE}/tests?since_days=${sinceDays}`)
   if (!res.ok) {

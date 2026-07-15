@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { fetchTrace, fetchCommitFiles, fetchCommitDiff, fetchTests } from '../utils/api'
+import { fetchTrace, fetchLatestTrace, fetchCommitFiles, fetchCommitDiff, fetchTests } from '../utils/api'
+
+function formatClockTime(iso) {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+}
+
+const AUTO_REFRESH_SECONDS = 30
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -270,7 +276,12 @@ function FileRow({ repo, commitId, file }) {
   )
 }
 
-function TicketCommitRow({ trace }) {
+function initials(name) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?'
+}
+
+function TimelineCommitRow({ trace, isLast }) {
   const [open, setOpen]       = useState(false)
   const [files, setFiles]     = useState(null)
   const [loading, setLoading] = useState(false)
@@ -298,41 +309,41 @@ function TicketCommitRow({ trace }) {
   const shortId = trace.commit_id.slice(0, 8)
 
   return (
-    <div className="ticket-commit-wrap">
-      {/* Commit header row */}
-      <div className="ticket-commit-row" onClick={handleClick}>
-        <span className="commit-toggle">{open ? '▾' : '▸'}</span>
-        <span className="repo-slug-tag">{trace.repo}</span>
-        <div className="ticket-commit-text">
-          <div className="commit-message" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {trace.message}
-          </div>
-          <div className="commit-info">
-            {trace.author} &bull; {formatDate(trace.timestamp)} &bull; {shortId}
-          </div>
-        </div>
-        {loading && <span className="inline-loading">loading files…</span>}
+    <div className="timeline-row">
+      <div className="timeline-avatar-col">
+        <div className="timeline-avatar" onClick={handleClick}>{initials(trace.author)}</div>
+        {!isLast && <div className="timeline-line" />}
       </div>
-
-      {/* File list */}
-      {open && !loading && error && (
-        <div className="file-list-error">⚠ Could not load files: {error}</div>
-      )}
-      {open && !loading && files && (
-        <div className="file-list">
-          {files.length === 0
-            ? <div className="file-empty">No file changes found</div>
-            : files.map(f => (
-                <FileRow
-                  key={f.path}
-                  repo={trace.repo}
-                  commitId={trace.commit_id}
-                  file={f}
-                />
-              ))
-          }
+      <div className="timeline-content">
+        <div className="timeline-clickable" onClick={handleClick}>
+          <div className="timeline-head">
+            <span className="repo-slug-tag">{trace.repo}</span>
+            <span className="timeline-sha">{shortId}</span>
+            {loading && <span className="inline-loading">loading files…</span>}
+          </div>
+          <div className="commit-message">{trace.message}</div>
+          <div className="commit-info">{trace.author} &bull; {formatDate(trace.timestamp)}</div>
         </div>
-      )}
+
+        {open && !loading && error && (
+          <div className="file-list-error">⚠ Could not load files: {error}</div>
+        )}
+        {open && !loading && files && (
+          <div className="file-list">
+            {files.length === 0
+              ? <div className="file-empty">No file changes found</div>
+              : files.map(f => (
+                  <FileRow
+                    key={f.path}
+                    repo={trace.repo}
+                    commitId={trace.commit_id}
+                    file={f}
+                  />
+                ))
+            }
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -340,6 +351,7 @@ function TicketCommitRow({ trace }) {
 function TicketCard({ ticket, expanded, onToggle }) {
   const open = expanded
   const repoCount = new Set(ticket.commits.map(c => c.repo)).size
+  const tagParts = ticket.tag ? ticket.tag.split(',').map(t => t.trim()).filter(Boolean) : []
 
   return (
     <div className="ticket-card">
@@ -358,87 +370,90 @@ function TicketCard({ ticket, expanded, onToggle }) {
       </div>
 
       {open && (
-        <div className="ticket-card-body">
-          {/* Ticket metadata */}
-          <div className="ticket-details">
-            <div className="ticket-detail-row">
-              <span className="td-label">Product</span>
-              <span className="td-value">
-                {ticket.isPrisma
-                  ? <span className="component-tag">Prisma</span>
-                  : <span className="muted">Not Prisma — ticket excluded from scope</span>
+        <div className="ticket-card-body ticket-card-body--split">
+          {/* Left panel — ticket metadata */}
+          <div className="ticket-left-panel">
+            {ticket.isPrisma
+              ? <span className="prisma-badge">Prisma</span>
+              : <span className="muted">Not Prisma — ticket excluded from scope</span>
+            }
+
+            <div className="ticket-field">
+              <div className="ticket-field-label">Component</div>
+              <div className="ticket-field-pills">
+                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
+                  ? <span className="muted">Not applicable — ticket excluded above</span>
+                  : ticket.components.length > 0
+                    ? ticket.components.map(c => <span key={c} className="pill-component">{c}</span>)
+                    : <span className="muted">No component — cannot match tests</span>
                 }
-              </span>
+              </div>
             </div>
-            <div className="ticket-detail-row">
-              <span className="td-label">Tag</span>
-              <span className="td-value">
+
+            <div className="ticket-field">
+              <div className="ticket-field-label">Sub-Component</div>
+              <div className="ticket-field-pills">
+                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
+                  ? <span className="muted">Not applicable</span>
+                  : ticket.subComponents.length > 0
+                    ? ticket.subComponents.map(sc => <span key={sc} className="pill-subcomp">{sc}</span>)
+                    : <span className="muted">Not defined — component-level match only</span>
+                }
+              </div>
+            </div>
+
+            <div className="ticket-field">
+              <div className="ticket-field-label">Tag</div>
+              <div className="ticket-tag-boxes">
                 {!ticket.isPrisma
                   ? <span className="muted">Skipped — Product ≠ Prisma</span>
-                  : ticket.tag
-                    ? <span className="tag-text">{ticket.tag}</span>
+                  : tagParts.length > 0
+                    ? tagParts.map(t => <div key={t} className="tag-box">{t}</div>)
                     : ticket.status === 'no_permission'
                       ? <span style={{ color: 'var(--warning)', fontSize: 11 }}>🔒 API permission denied</span>
                       : <span className="muted">No tag field — ticket excluded from scope</span>
                 }
-              </span>
+              </div>
             </div>
-            <div className="ticket-detail-row">
-              <span className="td-label">Component</span>
-              <span className="td-value">
-                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
-                  ? <span className="muted">Not applicable — ticket excluded above</span>
-                  : ticket.components.length > 0
-                    ? ticket.components.map(c => <span key={c} className="component-tag">{c}</span>)
-                    : <span className="muted">No component — cannot match tests</span>
+
+            {ticket.status !== 'not_prisma' && ticket.status !== 'no_tag' && (
+              <div className="test-search-box">
+                <div className="ticket-field-label">Test search</div>
+                {ticket.components.length > 0
+                  ? <div>
+                      Looking for regression tests tagged{' '}
+                      {ticket.components.map((c, i) => (
+                        <span key={c}>
+                          {i > 0 && <> or </>}
+                          <strong>{c}</strong>
+                          {ticket.subComponents.length > 0 && (
+                            <> ({ticket.subComponents.join(' or ')})</>
+                          )}
+                        </span>
+                      ))}
+                      {' '}— automated, non-retired regression tests only.
+                    </div>
+                  : <span className="muted">Skipped — no component</span>
                 }
-              </span>
-            </div>
-            <div className="ticket-detail-row">
-              <span className="td-label">Sub-Component</span>
-              <span className="td-value">
-                {ticket.status === 'not_prisma' || ticket.status === 'no_tag'
-                  ? <span className="muted">Not applicable</span>
-                  : ticket.subComponents.length > 0
-                    ? ticket.subComponents.map(sc => <span key={sc} className="component-tag">{sc}</span>)
-                    : <span className="muted">Not defined — component-level match only</span>
-                }
-              </span>
-            </div>
-            <div className="ticket-detail-row">
-              <span className="td-label">Test search</span>
-              <span className="td-value">
-                {ticket.status === 'not_prisma'
-                  ? <span className="muted">Skipped — Product ≠ Prisma</span>
-                  : ticket.status === 'no_tag'
-                    ? <span className="muted">Skipped — no Tag field</span>
-                    : ticket.components.length > 0
-                      ? <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>
-                          Looking for regression tests tagged{' '}
-                          {ticket.components.map((c, i) => (
-                            <span key={c}>
-                              {i > 0 && <> or </>}
-                              <strong>{c}</strong>
-                              {ticket.subComponents.length > 0 && (
-                                <> ({ticket.subComponents.join(' or ')})</>
-                              )}
-                            </span>
-                          ))}
-                          {' '}— automated, non-retired regression tests only.
-                        </div>
-                      : <span className="muted">Skipped — no component</span>
-                }
-              </span>
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Commits under this ticket */}
-          <div className="ticket-commits-label">
-            Commits referencing this ticket
+          {/* Right panel — commit timeline */}
+          <div className="ticket-right-panel">
+            <div className="ticket-commits-label">
+              Commits referencing this ticket ({ticket.commits.length})
+            </div>
+            <div className="commit-timeline">
+              {ticket.commits.map((c, i) => (
+                <TimelineCommitRow
+                  key={c.commit_id + c.repo}
+                  trace={c}
+                  isLast={i === ticket.commits.length - 1}
+                />
+              ))}
+            </div>
           </div>
-          {ticket.commits.map(c => (
-            <TicketCommitRow key={c.commit_id + c.repo} trace={c} />
-          ))}
         </div>
       )}
     </div>
@@ -469,9 +484,11 @@ function NoTicketSection({ commits, expanded, onToggle }) {
               </span>
             </div>
           </div>
-          {commits.map(c => (
-            <TicketCommitRow key={c.commit_id + c.repo} trace={c} />
-          ))}
+          <div className="commit-timeline">
+            {commits.map((c, i) => (
+              <TimelineCommitRow key={c.commit_id + c.repo} trace={c} isLast={i === commits.length - 1} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -555,8 +572,19 @@ function ByTicketView({ tickets, noTicketCommits }) {
 // 1=Critical, 2=High, 3=Medium, 4=Low, 10000=TBD.
 const PRIORITY_LABEL = { '1': 'Critical', '2': 'High', '3': 'Medium', '4': 'Low', '10000': 'TBD' }
 const PRIORITY_COLOR = { '1': '#dc2626', '2': '#ea580c', '3': '#ca8a04', '4': '#6b7280', '10000': '#9ca3af' }
+const PRIORITY_ICON  = { '1': '⊖', '2': '⚑', '3': '≫', '4': '○', '10000': '○' }
 // Severity rank for sorting — 0 = most severe (Critical) ... 4 = least (TBD)
 const PRIORITY_SEVERITY = { '1': 0, '2': 1, '3': 2, '4': 3, '10000': 4 }
+const PRIORITY_FILTERS = ['All', 'Critical', 'High', 'Medium', 'Low', 'TBD']
+
+function PriorityIcon({ priorityId }) {
+  const id = String(priorityId || '4')
+  return (
+    <span className="priority-icon" style={{ color: PRIORITY_COLOR[id] ?? '#6b7280' }} title={PRIORITY_LABEL[id]}>
+      {PRIORITY_ICON[id] ?? '○'}
+    </span>
+  )
+}
 
 function PriorityBadge({ priorityId }) {
   const id = String(priorityId || '4')
@@ -579,8 +607,9 @@ function RecommendedTestsView({ tests, loading, error }) {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   // null = default (backend) order; 'desc' = Critical → TBD; 'asc' = TBD → Critical
   const [prioritySort, setPrioritySort] = useState(null)
+  const [priorityFilter, setPriorityFilter] = useState('All')
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); setPrioritySort(null) }, [tests])
+  useEffect(() => { setVisibleCount(PAGE_SIZE); setPrioritySort(null); setPriorityFilter('All') }, [tests])
 
   const sortedTests = useMemo(() => {
     if (!tests || !prioritySort) return tests?.tests ?? []
@@ -591,6 +620,13 @@ function RecommendedTestsView({ tests, loading, error }) {
       return dir * (ra - rb)
     })
   }, [tests, prioritySort])
+
+  const filteredTests = useMemo(() => {
+    if (priorityFilter === 'All') return sortedTests
+    return sortedTests.filter(t => PRIORITY_LABEL[String(t.priority_id || '4')] === priorityFilter)
+  }, [sortedTests, priorityFilter])
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [priorityFilter])
 
   function togglePrioritySort() {
     setPrioritySort(prev => prev === 'desc' ? 'asc' : prev === 'asc' ? null : 'desc')
@@ -626,10 +662,24 @@ function RecommendedTestsView({ tests, loading, error }) {
         {tests.total_tests} test case{tests.total_tests !== 1 ? 's' : ''} recommended
       </div>
 
+      {/* Priority filter */}
+      <div className="priority-filter-row">
+        {PRIORITY_FILTERS.map(f => (
+          <button
+            key={f}
+            className={`priority-filter-btn ${priorityFilter === f ? 'active' : ''}`}
+            onClick={() => setPriorityFilter(f)}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {/* Test list */}
       <div className="tests-table">
         <div className="tests-table-header">
           <span>#</span>
+          <span></span>
           <span>Jira ID</span>
           <span>Test Summary</span>
           <span>Component</span>
@@ -646,9 +696,11 @@ function RecommendedTestsView({ tests, loading, error }) {
           <span>Frequency</span>
         </div>
 
-        {sortedTests.slice(0, visibleCount).map((t, i) => (
+        {filteredTests.slice(0, visibleCount).map((t, i) => (
           <div key={t.jira_id} className="tests-row">
             <span className="tests-row-num">{i + 1}</span>
+
+            <PriorityIcon priorityId={t.priority_id} />
 
             <a
               href={`https://mediaocean.atlassian.net/browse/${t.jira_id}`}
@@ -678,7 +730,7 @@ function RecommendedTestsView({ tests, loading, error }) {
         ))}
       </div>
 
-      {visibleCount < tests.tests.length && (
+      {visibleCount < filteredTests.length && (
         <div style={{ textAlign: 'center', padding: '20px 0' }}>
           <button
             onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
@@ -688,10 +740,129 @@ function RecommendedTestsView({ tests, loading, error }) {
               fontSize: 14, fontWeight: 700, boxShadow: 'var(--shadow-sm)',
             }}
           >
-            Load more — {tests.tests.length - visibleCount} remaining
+            Load more — {filteredTests.length - visibleCount} remaining
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Stat cards ──────────────────────────────────────────────────────────────
+
+function commitsByDay(trace) {
+  const map = new Map()
+  for (const t of trace) {
+    const day = new Date(t.timestamp).toISOString().slice(0, 10)
+    map.set(day, (map.get(day) || 0) + 1)
+  }
+  const days = [...map.keys()].sort()
+  const last7 = days.slice(-7)
+  return last7.map(d => ({ day: d, count: map.get(d) }))
+}
+
+function RepoActivityCard({ scanned, changed }) {
+  const dots = Array.from({ length: scanned }, (_, i) => i < changed)
+  return (
+    <div className="stat-card">
+      <div className="stat-card-label">Repo Activity</div>
+      <div className="stat-card-num">
+        {changed} <span className="stat-card-num-sub">of {scanned} repos changed</span>
+      </div>
+      <div className="repo-dots">
+        {dots.map((active, i) => (
+          <span key={i} className={`repo-dot ${active ? 'repo-dot--active' : ''}`} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CommitsCard({ total, byDay }) {
+  const max = Math.max(1, ...byDay.map(d => d.count))
+  return (
+    <div className="stat-card stat-card--dark">
+      <div className="stat-card-label">Commits</div>
+      <div className="stat-card-num">{total}</div>
+      <div className="sparkline">
+        {byDay.map(d => (
+          <span
+            key={d.day}
+            className="sparkline-bar"
+            style={{ height: `${8 + (d.count / max) * 20}px` }}
+            title={`${d.day}: ${d.count} commit${d.count !== 1 ? 's' : ''}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CoverageDonutCard({ matched, gaps }) {
+  const total = matched + gaps
+  const pct = total > 0 ? Math.round((matched / total) * 100) : 0
+  const ringStyle = {
+    background: `conic-gradient(var(--success-mid) ${pct * 3.6}deg, var(--neutral-bg) ${pct * 3.6}deg)`,
+  }
+  return (
+    <div className="stat-card">
+      <div className="stat-card-label">Coverage — Matched vs Gaps</div>
+      <div className="donut-row">
+        <div className="donut-ring" style={ringStyle}>
+          <div className="donut-center">
+            <div className="donut-pct">{pct}%</div>
+            <div className="donut-pct-lbl">matched</div>
+          </div>
+        </div>
+        <div className="donut-legend">
+          <div className="donut-legend-row">
+            <span className="donut-dot donut-dot--matched" /> {matched} matched
+          </div>
+          <div className="donut-legend-row">
+            <span className="donut-dot donut-dot--gap" /> {gaps} gaps
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CommitsPerRepoCard({ repoCounts }) {
+  const max = Math.max(1, ...repoCounts.map(r => r.count))
+  return (
+    <div className="stat-card">
+      <div className="stat-card-label">Commits per Repo</div>
+      <div className="repo-bar-list">
+        {repoCounts.map(r => (
+          <div key={r.repo} className="repo-bar-row">
+            <div className="repo-bar-head">
+              <span className="repo-bar-name">{r.repo}</span>
+              <span className="repo-bar-count">{r.count}</span>
+            </div>
+            <div className="repo-bar-track">
+              <div className="repo-bar-fill" style={{ width: `${(r.count / max) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatsGrid({ data, matched, gaps, grouped }) {
+  const byDay = useMemo(() => commitsByDay(data.trace), [data.trace])
+  const repoCounts = useMemo(
+    () => grouped.map(([repo, commits]) => ({ repo, count: commits.length }))
+      .sort((a, b) => b.count - a.count),
+    [grouped]
+  )
+
+  return (
+    <div className="stats-grid">
+      <RepoActivityCard scanned={data.repos_scanned} changed={data.repos_with_changes} />
+      <CommitsCard total={data.commits_processed} byDay={byDay} />
+      <CoverageDonutCard matched={matched} gaps={gaps} />
+      <CommitsPerRepoCard repoCounts={repoCounts} />
     </div>
   )
 }
@@ -708,6 +879,40 @@ export default function Dashboard() {
   const [tests, setTests]           = useState(null)
   const [testsLoading, setTestsLoading] = useState(false)
   const [testsError, setTestsError]   = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [isCached, setIsCached]       = useState(false)
+  const [secondsToRefresh, setSecondsToRefresh] = useState(AUTO_REFRESH_SECONDS)
+
+  function applyCacheResult(result) {
+    if (result.trace) {
+      setData(result.trace)
+      setDays(result.trace.since_days)
+      setLastUpdated(result.cached_at)
+      setIsCached(true)
+    }
+  }
+
+  // On mount, show the poller's warm trace cache instantly instead of forcing
+  // a live 30-60s Stash+Jira scan on every page load. Falls back silently to
+  // the empty state if the poller hasn't produced a cache yet (cold start).
+  useEffect(() => {
+    fetchLatestTrace().then(applyCacheResult).catch(() => {}) // silent — empty state is a fine fallback
+  }, [])
+
+  // Auto-refresh: re-poll the cache (not a live scan) every 30s so an
+  // ambient/open dashboard stays current. Only while showing the cached view —
+  // pauses once the user runs a manual (possibly custom-window) query, so it
+  // doesn't silently overwrite what they asked for.
+  useEffect(() => {
+    if (!isCached || loading) return
+    if (secondsToRefresh <= 0) {
+      fetchLatestTrace().then(applyCacheResult).catch(() => {})
+      setSecondsToRefresh(AUTO_REFRESH_SECONDS)
+      return
+    }
+    const t = setTimeout(() => setSecondsToRefresh(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [isCached, loading, secondsToRefresh])
 
   async function run() {
     setLoading(true)
@@ -716,9 +921,11 @@ export default function Dashboard() {
     setTests(null)
     setTestsError(null)
     setExpandedIds(new Set())
+    setIsCached(false)
     try {
       const result = await fetchTrace(days)
       setData(result)
+      setLastUpdated(new Date().toISOString())
     } catch (e) {
       setError(e.message)
     } finally {
@@ -826,8 +1033,15 @@ export default function Dashboard() {
             <option value={60}>Last 60 days</option>
             <option value={90}>Last 90 days</option>
           </select>
-          <button className="btn-run" onClick={run} disabled={loading}>
-            {loading ? '⏳ Running…' : '▶ Run Pipeline'}
+          <button className="btn-run-combo" onClick={run} disabled={loading} title="Run pipeline now">
+            {isCached && !loading && <span className="btn-run-combo-dot" />}
+            <span className="btn-run-combo-icon">{loading ? '⏳' : '↻'}</span>
+            <span className="btn-run-combo-text">
+              <span className="btn-run-combo-main">{loading ? 'Running…' : '▶ Run Pipeline'}</span>
+              {lastUpdated && !loading && (
+                <span className="btn-run-combo-sub">Updated {formatClockTime(lastUpdated)}</span>
+              )}
+            </span>
           </button>
         </div>
 
@@ -853,33 +1067,8 @@ export default function Dashboard() {
         {/* Results */}
         {data && !loading && (
           <>
-            {/* Summary strip */}
-            <div className="summary-strip">
-              <div className="summary-stat">
-                <div className="num">{data.repos_scanned}</div>
-                <div className="lbl">Repos scanned</div>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-stat">
-                <div className="num">{data.repos_with_changes}</div>
-                <div className="lbl">With changes</div>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-stat">
-                <div className="num">{data.commits_processed}</div>
-                <div className="lbl">Commits</div>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-stat">
-                <div className="num">{inScopeTickets.length}</div>
-                <div className="lbl">Unique tickets</div>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-stat">
-                <div className="num" style={{ color: 'var(--success)' }}>{matched}</div>
-                <div className="lbl">Matched ✓</div>
-              </div>
-            </div>
+            {/* Stat cards */}
+            <StatsGrid data={data} matched={matched} gaps={gaps} grouped={grouped} />
 
             {/* Tab bar */}
             <div className="tab-bar">
