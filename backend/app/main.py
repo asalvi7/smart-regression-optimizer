@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from app.core.config import get_settings
 from app.core.scheduler import create_scheduler
 from app.api.routes.api import router
-from app.api.routes.coverage import router as coverage_router
 
 settings = get_settings()
 
@@ -36,7 +35,6 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
-app.include_router(coverage_router, prefix="/api")
 
 
 @app.get("/health")

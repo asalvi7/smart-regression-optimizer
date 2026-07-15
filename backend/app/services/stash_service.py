@@ -232,27 +232,6 @@ async def get_commit_diff(repo_slug: str, commit_id: str, file_path: str) -> dic
     }
 
 
-async def get_file_content_at_commit(repo_slug: str, commit_id: str, file_path: str) -> str:
-    """Fetch a file's full raw content at a given commit revision.
-
-    Used by the coverage/diff_parser.py trial pipeline to resolve changed line
-    numbers to enclosing Java methods/classes — the existing get_commit_diff()
-    only returns line-level hunks, not full file content, so this is additive
-    rather than a replacement for anything the component-mapping pipeline uses.
-    """
-    from urllib.parse import quote
-    encoded = quote(file_path, safe="/")
-    url = (
-        f"{_BASE}/rest/api/1.0/projects/{settings.stash_project_key}"
-        f"/repos/{repo_slug}/raw/{encoded}?at={commit_id}"
-    )
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, headers=STASH_HEADERS)
-        if resp.status_code != 200:
-            return ""
-        return resp.text
-
-
 async def get_repos_with_recent_commits(since_days: int = 30) -> dict[str, list[Commit]]:
     since = datetime.now(tz=timezone.utc) - timedelta(days=since_days)
     repos = await get_all_repos()

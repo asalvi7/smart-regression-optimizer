@@ -18,13 +18,6 @@ class Settings(BaseSettings):
     commit_lookback_days: int = 30
     frontend_url: str = "http://localhost:5173"
 
-    # Coverage-based Test Impact Analysis (TIA) trial pipeline — see
-    # backend/app/services/coverage/. Independent of the component-mapping
-    # pipeline above; safe to leave at defaults if the trial isn't running.
-    coverage_index_db_path: str = "data/coverage_index.db"
-    coverage_exec_dropbox_dir: str = "data/coverage_raw"
-    jacoco_report_helper_jar: str = "tools/jacoco-report-helper/target/jacoco-report-helper.jar"
-
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
