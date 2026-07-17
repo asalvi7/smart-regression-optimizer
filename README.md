@@ -39,7 +39,6 @@ Full documentation lives under [`documentation/user_guide/`](documentation/user_
 | [03-implementation-details.md](documentation/user_guide/03-implementation-details.md) | How ticket resolution, ranking, and tracing actually work in code |
 | [04-user-manual.md](documentation/user_guide/04-user-manual.md) | How to use the dashboard, interpret results, and troubleshoot |
 | [05-docker-deployment.md](documentation/user_guide/05-docker-deployment.md) | Docker/single-VM deployment |
-| [06-commands.md](documentation/user_guide/06-commands.md) | Quick-reference deploy/update commands |
 
 See `CLAUDE.md` for guidance oriented at AI coding assistants working in this repo.
 
