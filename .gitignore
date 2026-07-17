@@ -42,10 +42,11 @@ backend/tools/
 frontend/src/pages/CoverageDashboard.jsx
 frontend/src/components/CoverageComparison.jsx
 
-# Documentation — only the user_guide (Approach 1) gets pushed; everything else
-# (roadmap, sessions, decisions, architecture, setup, tooling) stays local-only
+# Documentation — only the user_guide (Approach 1, limited-detail) gets pushed; everything else
+# (roadmap, sessions, decisions, architecture, setup, tooling, and the full-detail user_guide_1) stays local-only
 documentation/*
 !documentation/user_guide
+documentation/user_guide_1
 
 CLAUDE.md
 CLAUDE.md

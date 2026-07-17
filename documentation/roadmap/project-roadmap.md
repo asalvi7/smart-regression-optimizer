@@ -2,6 +2,8 @@
 
 > The single source of truth for where the project is, where it's going, and what we need to understand at each step. Living document — update as steps complete or understanding changes.
 
+> **⚠ 2026-07-17 note**: The plan below (file-level proximity ranking, Steps 1–6) was the direction as of 2026-06-12 and was never built. What actually shipped (see the 2026-07-17 entry at the bottom) is a different design — Product=Prisma + ticket Tag field → Jira component/sub-component → JQL search, ranked by frequency+priority with no computed score. Read the Steps/design-intuition sections below as historical planning context, not current direction, until this note is resolved.
+
 ---
 
 ## The One-Line Goal
@@ -25,16 +27,20 @@ We cannot meaningfully design the ranker until we know this. So Step 1 is the fo
 
 ## Where We Already Are (Done)
 
-Parts 1 & 2 are built and working end-to-end:
-- Scan all CM repos in Bitbucket Stash for commits in a time window
-- Extract Jira ticket IDs from commit messages
-- Map commits → Jira components → Selenium test cases
-- Produce a rough `impact_score` (currently component-overlap based)
+**As of 2026-07-17**, the shipped pipeline is not the proximity-ranking design this roadmap originally planned toward — see the note at the top of this doc and the 2026-07-17 entry at the bottom for the full pivot story. Current state:
 
-**What's solid:** the plumbing works.
-**What's unresolved:** the ranking is coarse, and Shailesh told us to redesign it as *change-proximity* (not historical failure rate / execution time — those were explicitly rejected).
+- Scans allowlisted repos in Bitbucket Stash for commits in a time window
+- Extracts ADINFRA-*/IAPP-* ticket IDs from commit messages
+- Two silent scope checks per ticket: Product field must include "Prisma", ticket must have a non-empty Tag field — everything else is dropped, not flagged as a gap
+- Tag field → repo slug → `(component, sub_component)` via `backend/config/tag_component_mapping.json` → JQL search against Jira's `cf[10205]`/`cf[10206]` custom fields (not the system `component` field)
+- Ranking is `(-frequency, priority)` only — **no computed `impact_score`, no file-level or proximity signal at all**. The rough component-overlap score mentioned in the line this replaces was removed as redundant (`documentation/decisions/test-case-ranking.md`).
+- A working React dashboard (`Dashboard.jsx`) — trace view, ticket drill-down with file/diff viewer, recommended-tests table — plus Docker/single-VM deployment.
+- A parallel coverage-based (JaCoCo) TIA trial was designed and partially built as Approach 2, then stripped back out of the tracked backend as of 2026-07-15 (`documentation/decisions/coverage-based-test-impact-analysis.md`) — currently unreachable, not merely low-confidence.
 
-See [[parts-1-and-2-build]] and [[objective-1-stakeholder-alignment]] for detail.
+**What's solid:** the plumbing works, and it's shipped/in use as a real Prisma/Tag-based selector — a materially different, simpler design than the proximity model below.
+**What's unresolved:** whether to still pursue the file-level proximity design at all, now that a different (Tag/component-based) approach already works. This needs an explicit decision, not silent abandonment.
+
+See [[parts-1-and-2-build]] and [[objective-1-stakeholder-alignment]] for the original build detail (predates the Prisma/Tag pivot).
 
 ---
 
@@ -97,7 +103,7 @@ This directly handles the hard cases:
 | Bug-history path (bugs → fix commits → files) | A data source to explore once we know what file data exists | After Step 2 |
 | k8 micro-service linking | Additional granularity layer beyond components | After components are solid |
 | ReportPortal | Belongs to Objective #2 (failure classification), not #1 | Objective #2 |
-| Frontend dashboard | Only worth building once the ranker is trustworthy | After Step 5 |
+| ~~Frontend dashboard~~ | **Done** — built ahead of the original plan's sequencing, alongside the Prisma/Tag pipeline pivot rather than after a proximity ranker | Shipped 2026-07-13 onward |
 
 ---
 
@@ -188,3 +194,37 @@ The diffuseness concern raised earlier is real and large: at ~552 tests per comp
 - Do the Prisma dashboard "Components" (Campaign, Adserving…) exactly equal the Jira `component` field our `layer2_component_search` queries? Need to confirm the names line up with `repo_component_mapping.json`.
 - What sub-components exist under "Campaign," and how many tests each? That tells us how much sharpening sub-component matching actually buys us.
 - How do we get from a changed file path (e.g. `cm-buy-tv/...BudgetTv.java`) to a sub-component? Is there a naming convention, or does it need its own mapping?
+
+---
+
+## 2026-07-17 — Documentation audit: this roadmap had drifted ~5 weeks behind a real pivot
+
+### Context
+
+A full documentation-vs-code audit (comparing every doc under `documentation/` against actual current source, not against other docs) found this roadmap hadn't been updated since 2026-06-12 despite 20+ commits since. The gap wasn't cosmetic — the shipped pipeline took a different path than the one this roadmap was steering toward.
+
+### What We Found
+
+The roadmap's throughline was: get file-level diff data → build a change-proximity ranker → replace the coarse category-importance scoring in `ranker.py`. None of that happened. Instead, commit `34024f5` ("Scope Approach 1 to Prisma/Global Invoices, fix Jira field-ID bugs, simplify ranking, redesign dashboard", 2026-07-13) took the pipeline in a different direction entirely:
+
+- Selection scope narrowed to Product=Prisma tickets with a non-empty Tag field (`documentation/decisions/prisma-ingestion-scope.md`), not broadened via file-level matching.
+- Component resolution now reads the Tag field's repo slug directly against a small curated JSON map (`tag_component_mapping.json`), not a proximity signal derived from diffs (`documentation/decisions/component-resolution-from-tag.md`).
+- Ranking was **simplified**, not sharpened — the old 4-factor weighted score (the thing Step 4/5 here were meant to replace with something *better*) was instead stripped down to `(-frequency, priority)` with no computed score at all (`documentation/decisions/test-case-ranking.md`). The diffuseness problem this roadmap worried about (hundreds of tests per component) was addressed by narrowing *scope* (Prisma + Tag required) rather than by *ranking* more precisely within a broad scope.
+- A file-level, coverage-based alternative *was* explored — but as a completely separate design (JaCoCo reverse-index lookup, `documentation/decisions/coverage-based-test-impact-analysis.md`), not as an extension of this roadmap's file-overlap ranking idea. That trial was itself built, then stripped back out of the tracked backend on 2026-07-15.
+
+### Key Insight
+
+Nobody made an explicit "abandon the proximity plan" decision that got written down — it's an implicit pivot, visible only by comparing this roadmap against `git log` and the decision docs. That's exactly the kind of drift this audit exists to catch: the roadmap document says one plan is in progress while the shipped code embodies a different, already-completed one.
+
+### What Was Done (this audit)
+
+- Added a warning note near the top of this doc pointing at this entry.
+- Rewrote "Where We Already Are" to describe the actual shipped Prisma/Tag/component pipeline instead of the never-built proximity plan.
+- Marked "Frontend dashboard" in the Parked/Later table as done.
+- Left Steps 1–6 and the "design intuition" sections below **unedited** — kept as the historical record of the original plan, not deleted, since they may still be worth returning to (see Open Questions).
+
+### Open Questions
+
+- Is the file-level proximity ranking idea still worth pursuing given the Prisma/Tag pipeline already works and is in use? If component/sub-component scoping already solves enough of the diffuseness problem in practice, Steps 1–6 below may be moot rather than merely delayed.
+- If proximity ranking *is* still wanted, should it now be scoped as a refinement on top of the Prisma/Tag-filtered result set (rank within the already-narrowed scope) rather than the original plan's role of doing the narrowing itself?
+- This audit only fixed the roadmap's status framing — it did not re-litigate whether the Prisma/Tag pipeline's simplified ranking is good enough. Worth a deliberate checkpoint (per this doc's own "verify each step" principle) rather than treating the current shipped state as implicitly validated.
