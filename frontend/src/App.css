@@ -33,7 +33,7 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
-body { background: var(--bg); min-height: 100vh; zoom: 1.12; }
+body { background: var(--bg); min-height: 100vh; zoom: 0.85; }
 
 /* ─── App header ─────────────────────────────────────────── */
 .app-header {
@@ -958,7 +958,7 @@ code {
 }
 .tests-table-header {
   display: grid;
-  grid-template-columns: 40px 28px 140px 1fr 190px 130px 140px;
+  grid-template-columns: 40px 28px 140px 1fr 190px 130px;
   gap: 12px;
   padding: 14px 22px;
   background: var(--neutral-bg);
@@ -971,7 +971,7 @@ code {
 }
 .tests-row {
   display: grid;
-  grid-template-columns: 40px 28px 140px 1fr 190px 130px 140px;
+  grid-template-columns: 40px 28px 140px 1fr 190px 130px;
   gap: 12px;
   padding: 16px 22px;
   border-bottom: 1px solid var(--border);

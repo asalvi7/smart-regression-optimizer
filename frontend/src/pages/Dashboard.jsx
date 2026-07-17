@@ -693,7 +693,6 @@ function RecommendedTestsView({ tests, loading, error }) {
               {prioritySort === 'asc' ? '▲' : prioritySort === 'desc' ? '▼' : '▲▼'}
             </span>
           </span>
-          <span>Frequency</span>
         </div>
 
         {filteredTests.slice(0, visibleCount).map((t, i) => (
@@ -721,10 +720,6 @@ function RecommendedTestsView({ tests, loading, error }) {
 
             <span>
               <PriorityBadge priorityId={t.priority_id} />
-            </span>
-
-            <span className={`tests-row-frequency ${t.frequency > 1 ? 'tests-row-frequency--hot' : ''}`}>
-              ×{t.frequency} {t.frequency > 1 ? 'tickets' : 'ticket'}
             </span>
           </div>
         ))}
@@ -1030,10 +1025,6 @@ export default function Dashboard() {
 
   return (
     <>
-      <header className="app-header app-header--single">
-        <span>Mediaocean — Pipeline Trace (Component-Based, Approach 1)</span>
-      </header>
-
       <div className="page">
         {/* Filter bar */}
         <div className="filter-bar">
